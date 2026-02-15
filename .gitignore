@@ -1,0 +1,54 @@
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Virtual envs ---
+.venv/
+venv/
+env/
+
+# --- Secrets / local env ---
+.env
+.env.*
+!.env.example
+
+# --- Logs / temp ---
+*.log
+*.tmp
+*.swp
+*.swo
+
+# --- Docker runtime artifacts ---
+Docker/**/runtime/
+Docker/**/hf_cache/
+Docker/**/eh_ingest_cache/
+Docker/shared/
+Docker/pgdata/
+Docker/n8n_data/
+Docker/local-files/
+
+# --- Build artifacts ---
+build/
+dist/
+
+# --- Companion Android/Kotlin build outputs ---
+Companion/**/build/
+
+# --- Binary caches ---
+*.bin
+*.sqlite
+*.sqlite3
+*.db

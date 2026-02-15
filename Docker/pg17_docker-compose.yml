@@ -1,0 +1,17 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17 # Uses the official image with pgvector built-in
+    container_name: pgvector-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: example_db
+    ports:
+      - "5432:5432" # Maps container port 5432 to host port 5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data # Mounts a volume for data persistence
+      # Optional: Mount an initialization script
+      # - ./postgres/schema.sql:/docker-entrypoint-initdb.d/schema.sql 
+volumes:
+  pgdata:
+    driver: local

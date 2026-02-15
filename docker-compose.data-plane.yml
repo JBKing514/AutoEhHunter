@@ -1,0 +1,81 @@
+services:
+  pg17:
+    image: pgvector/pgvector:pg17
+    container_name: pgvector-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-lrr_library}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./Docker/pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-lrr_library}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  lanraragi:
+    image: difegue/lanraragi
+    container_name: lanraragi
+    ports:
+      - "3000:3000"
+    volumes:
+      - ${LRR_CONTENT_DIR}:/home/koyomi/lanraragi/content
+      - ${LRR_THUMB_DIR}:/home/koyomi/lanraragi/thumb
+      - ${LRR_DATABASE_DIR}:/home/koyomi/lanraragi/database
+    restart: unless-stopped
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_RUNNERS_ENABLED: "true"
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Asia/Shanghai}
+      TZ: ${GENERIC_TIMEZONE:-Asia/Shanghai}
+    volumes:
+      - ./Docker/n8n_data:/home/node/.n8n
+      - ./Docker/local-files:/files
+    restart: unless-stopped
+
+  data:
+    image: autoeh-data:local
+    build:
+      context: ./Docker
+      dockerfile: data/Dockerfile
+    container_name: autoeh-data
+    env_file:
+      - ./Docker/data/.env
+    command: ["help"]
+    volumes:
+      - ./Docker/data/runtime:/app/runtime
+      - ./Docker/shared/eh_ingest_cache:/app/runtime/eh_ingest_cache
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    depends_on:
+      pg17:
+        condition: service_healthy
+
+  data-ui:
+    image: autoeh-data:local
+    build:
+      context: ./Docker
+      dockerfile: data/Dockerfile
+    container_name: autoeh-data-ui
+    env_file:
+      - ./Docker/data/.env
+    command: ["data-ui"]
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./Docker/data/runtime:/app/runtime
+      - ./Docker/shared/eh_ingest_cache:/app/runtime/eh_ingest_cache
+    restart: unless-stopped
+    depends_on:
+      pg17:
+        condition: service_healthy

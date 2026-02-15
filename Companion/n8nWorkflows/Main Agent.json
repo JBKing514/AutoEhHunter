@@ -1,0 +1,156 @@
+{
+  "name": "Main Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{  ($json.message?.photo ? \"[用户发送了一张图片] \" : \"\") + \n  ($json.message?.caption || $json.message?.text || \"\")\n}}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        720,
+        544
+      ],
+      "id": "e0aef7ac-b8de-47f3-bb10-d14860fcfd05",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "cf216687-8d0a-4d49-9aca-f34f2d4300fe",
+      "name": "Telegram Trigger1",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        528,
+        544
+      ],
+      "webhookId": "9a6ab965-4af4-4822-9359-fd307b12589a",
+      "credentials": {
+        "telegramApi": {
+          "id": "AywKFrrnC7AWpSjG",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "仅当用户请求属于以下意图时才调用本工具：1) 搜索（找书/搜图/相似作品/当用户只发了一张图而没有任何文本内容的时候，也调用本技能，除非用户明确说明不要这么做）；2) 用户画像；3) 阅读汇报。调用时把完整 Telegram 消息对象作为 telegramMsg 传入子工作流。4) 工具会返回HTML构造体，绝对不要做任何改动，直接按原样输出",
+        "workflowId": {
+          "__rl": true,
+          "value": "ySjGNtx8FwazwA0I",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/ySjGNtx8FwazwA0I",
+          "cachedResultName": "tr_agent_sub"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telegramMsg": "={{ $('Telegram Trigger1').item.json }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "telegramMsg",
+              "displayName": "telegramMsg",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        864,
+        736
+      ],
+      "id": "eb1b3c3e-817b-4a06-84fe-23dc80fa5c10",
+      "name": "hunterAgent_sub"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "=",
+          "mode": "id"
+        },
+        "responsesApiEnabled": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        736
+      ],
+      "id": "ca8ef753-e07e-4572-9bef-80c62f9751af",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "F0VgBPTtLuABWfCy",
+          "name": "OpenAi account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hunterAgent_sub": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "1f0306fa-267d-4ce7-97c1-a2ea43ee02d6",
+  "meta": {
+    "instanceId": "5bf19a74d8964d91b75d85d9e94031caa849d26436907eb17001f943a52887d6"
+  },
+  "id": "45512oIvgqpfYoA9JqnR0",
+  "tags": []
+}
