@@ -24,6 +24,7 @@ RUNTIME_DIR = Path(os.getenv("DATA_UI_RUNTIME_DIR", "/app/runtime/webui"))
 SCHEDULE_FILE = RUNTIME_DIR / "schedule.json"
 RUN_HISTORY_FILE = RUNTIME_DIR / "run_history.jsonl"
 TASK_LOG_DIR = RUNTIME_DIR / "task_logs"
+LOGO_PATH = Path(__file__).resolve().parent / "ico" / "AutoEhHunterLogo_128.png"
 
 DEFAULT_SCHEDULE = {
     "eh_fetch": {"enabled": False, "interval_minutes": 30},
@@ -31,6 +32,133 @@ DEFAULT_SCHEDULE = {
     "text_ingest": {"enabled": False, "interval_minutes": 60},
     "compute_daily": {"enabled": False, "interval_minutes": 60},
 }
+
+# Android string resource-like mapping.
+STRINGS = {
+    "zh": {
+        "app.title": "AutoEhHunter Data UI",
+        "tab.dashboard": "仪表盘",
+        "tab.control": "控制台",
+        "tab.audit": "审计",
+        "tab.xp_map": "XP 地形图",
+        "lang.label": "语言",
+        "lang.current": "🌐 {lang}",
+        "dashboard.title": "仪表盘",
+        "dashboard.metric.works": "库内本子数(works)",
+        "dashboard.metric.eh_works": "EH 元数据数(eh_works)",
+        "dashboard.metric.last_fetch": "最近 EH 抓取",
+        "dashboard.health": "系统健康",
+        "health.lrr": "LANraragi服务",
+        "health.compute": "Compute容器",
+        "health.llm": "大模型服务",
+        "health.llm.na": "请设置 OPENAI_HEALTH_URL 环境变量",
+        "control.title": "控制台",
+        "control.manual": "手动触发",
+        "control.btn.eh_fetch": "立即爬取 EH URL",
+        "control.btn.lrr_export": "导出LRR数据库",
+        "control.btn.text_ingest": "LRR元数据入库",
+        "control.manual.compute": "手动触发（Compute）",
+        "control.caption.compute": "以下命令需要 data-ui 容器可访问 Docker Socket，并且 compute 容器名正确。",
+        "control.worker.args": "run_worker 参数",
+        "control.worker.args.help": "会直接追加到 run_worker.sh 后",
+        "control.btn.compute_worker": "LRR视觉向量入库",
+        "control.btn.compute_eh_ingest": "EH 入库",
+        "control.btn.compute_daily": "EH+LRR视觉向量入库",
+        "control.scheduler": "计划任务",
+        "control.scheduler.enable": "启用 {label}",
+        "control.scheduler.interval": "间隔(分钟) {label}",
+        "control.scheduler.save": "保存定时配置",
+        "control.scheduler.saved": "已保存并应用定时任务。",
+        "scheduler.eh_fetch": "EH爬取",
+        "scheduler.lrr_export": "LRR数据库导出",
+        "scheduler.text_ingest": "LRR元数据入库",
+        "scheduler.compute_daily": "EH+LRR视觉向量入库",
+        "audit.title": "审计",
+        "audit.history": "最近任务记录",
+        "audit.no_history": "暂无任务记录。",
+        "audit.logs": "日志预览",
+        "audit.select_log": "选择日志文件",
+        "xp.title": "XP 地形图",
+        "xp.days": "统计窗口(天)",
+        "xp.k": "聚类数",
+        "xp.no_data": "暂无足够阅读记录用于聚类。",
+        "xp.no_tags": "可用于聚类的标签文本不足。",
+        "xp.chart_title": "XP 聚类 (PCA 2D)",
+        "status.up": "UP",
+        "status.down": "DOWN",
+        "status.na": "N/A",
+    },
+    "en": {
+        "app.title": "AutoEhHunter Data UI",
+        "tab.dashboard": "Dashboard",
+        "tab.control": "Control",
+        "tab.audit": "Audit",
+        "tab.xp_map": "Preference Map",
+        "lang.label": "Language",
+        "lang.current": "🌐 {lang}",
+        "dashboard.title": "Dashboard",
+        "dashboard.metric.works": "Library Works (works)",
+        "dashboard.metric.eh_works": "EH Metadata (eh_works)",
+        "dashboard.metric.last_fetch": "Last EH Fetch",
+        "dashboard.health": "System Health",
+        "health.lrr": "LANraragi",
+        "health.compute": "Compute",
+        "health.llm": "LLM Service",
+        "health.llm.na": "Set OPENAI_HEALTH_URL",
+        "control.title": "Control",
+        "control.manual": "Manual Trigger",
+        "control.btn.eh_fetch": "Fetch EH URLs Now",
+        "control.btn.lrr_export": "Export LRR Metadata",
+        "control.btn.text_ingest": "Ingest LRR Text Data",
+        "control.manual.compute": "Manual Trigger (Compute)",
+        "control.caption.compute": "Docker socket access is required in data-ui and compute container name must be correct.",
+        "control.worker.args": "run_worker args",
+        "control.worker.args.help": "Appended directly to run_worker.sh",
+        "control.btn.compute_worker": "Run run_worker",
+        "control.btn.compute_eh_ingest": "Run run_eh_ingest",
+        "control.btn.compute_daily": "Run run_daily",
+        "control.scheduler": "Scheduler",
+        "control.scheduler.enable": "Enable {label}",
+        "control.scheduler.interval": "Interval (minutes) {label}",
+        "control.scheduler.save": "Save Scheduler Config",
+        "control.scheduler.saved": "Scheduler config saved and applied.",
+        "scheduler.eh_fetch": "EH Fetch",
+        "scheduler.lrr_export": "LRR Export",
+        "scheduler.text_ingest": "Text Ingest",
+        "scheduler.compute_daily": "Compute run_daily",
+        "audit.title": "Audit",
+        "audit.history": "Recent Task History",
+        "audit.no_history": "No task history yet.",
+        "audit.logs": "Log Preview",
+        "audit.select_log": "Select Log File",
+        "xp.title": "Preference Map",
+        "xp.days": "Time Window (days)",
+        "xp.k": "Cluster Count",
+        "xp.no_data": "Not enough reading data for clustering.",
+        "xp.no_tags": "Not enough tag text for clustering.",
+        "xp.chart_title": "Preference Clusters (PCA 2D)",
+        "status.up": "UP",
+        "status.down": "DOWN",
+        "status.na": "N/A",
+    },
+}
+
+
+def get_lang() -> str:
+    if "ui_lang" not in st.session_state:
+        st.session_state.ui_lang = os.getenv("DATA_UI_LANG", "zh").strip().lower()
+    if st.session_state.ui_lang not in STRINGS:
+        st.session_state.ui_lang = "zh"
+    return st.session_state.ui_lang
+
+
+def t(key: str, **kwargs: Any) -> str:
+    lang = get_lang()
+    raw = STRINGS.get(lang, {}).get(key, STRINGS["en"].get(key, key))
+    try:
+        return str(raw).format(**kwargs)
+    except Exception:
+        return str(raw)
 
 
 def ensure_dirs() -> None:
@@ -84,8 +212,7 @@ def load_run_history(limit: int = 200) -> list[dict[str, Any]]:
 
 
 def db_dsn() -> str:
-    dsn = os.getenv("POSTGRES_DSN", "").strip()
-    return dsn
+    return os.getenv("POSTGRES_DSN", "").strip()
 
 
 def query_df(sql: str, params: tuple[Any, ...] = ()) -> pd.DataFrame:
@@ -98,6 +225,54 @@ def query_df(sql: str, params: tuple[Any, ...] = ()) -> pd.DataFrame:
             rows = cur.fetchall()
             cols = [d.name for d in cur.description] if cur.description else []
     return pd.DataFrame(rows, columns=cols)
+
+
+def run_docker_exec_via_socket(cmd: list[str], timeout_s: int = 1800) -> tuple[int, str, str]:
+    if not Path("/var/run/docker.sock").exists():
+        return (127, "", "docker CLI missing and /var/run/docker.sock not mounted")
+    if len(cmd) < 4 or cmd[0] != "docker" or cmd[1] != "exec":
+        return (2, "", f"unsupported docker command: {' '.join(cmd)}")
+
+    idx = 2
+    while idx < len(cmd) and cmd[idx].startswith("-"):
+        idx += 1
+    if idx >= len(cmd):
+        return (2, "", "missing container name in docker exec command")
+    container = cmd[idx]
+    argv = cmd[idx + 1 :]
+    if not argv:
+        return (2, "", "missing command in docker exec")
+
+    session = requests_unixsocket.Session()
+    base = "http+unix://%2Fvar%2Frun%2Fdocker.sock"
+    try:
+        create = session.post(
+            f"{base}/containers/{container}/exec",
+            json={"AttachStdout": True, "AttachStderr": True, "Tty": True, "Cmd": argv},
+            timeout=min(timeout_s, 30),
+        )
+        if create.status_code >= 400:
+            return (1, "", f"docker exec create failed: HTTP {create.status_code} {create.text}")
+        exec_id = (create.json() or {}).get("Id")
+        if not exec_id:
+            return (1, "", "docker exec create failed: missing exec id")
+
+        start = session.post(
+            f"{base}/exec/{exec_id}/start",
+            json={"Detach": False, "Tty": True},
+            timeout=timeout_s,
+        )
+        combined = start.text if start.text is not None else ""
+
+        inspect = session.get(f"{base}/exec/{exec_id}/json", timeout=min(timeout_s, 30))
+        if inspect.status_code >= 400:
+            return (1, combined, f"docker exec inspect failed: HTTP {inspect.status_code} {inspect.text}")
+        exit_code = int((inspect.json() or {}).get("ExitCode") or 0)
+        if exit_code == 0:
+            return (0, combined, "")
+        return (exit_code, combined, "docker exec returned non-zero exit code")
+    except Exception as e:
+        return (1, "", f"docker socket exec error: {e}")
 
 
 def run_task(task_name: str, cmd: list[str], timeout_s: int = 1800) -> dict[str, Any]:
@@ -132,6 +307,7 @@ def run_task(task_name: str, cmd: list[str], timeout_s: int = 1800) -> dict[str,
         out = raw_out.decode("utf-8", errors="replace") if isinstance(raw_out, bytes) else str(raw_out)
         err_txt = raw_err.decode("utf-8", errors="replace") if isinstance(raw_err, bytes) else str(raw_err)
         err = err_txt + "\nTimeout expired"
+
     elapsed = round(time.time() - started, 2)
     content = (
         f"[{now_iso()}] task={task_name} status={status} rc={rc} elapsed={elapsed}s\n"
@@ -151,66 +327,6 @@ def run_task(task_name: str, cmd: list[str], timeout_s: int = 1800) -> dict[str,
     }
     append_run_history(event)
     return event
-
-
-def run_docker_exec_via_socket(cmd: list[str], timeout_s: int = 1800) -> tuple[int, str, str]:
-    """Fallback for environments where docker CLI binary is unavailable.
-
-    Supports command shape:
-      docker exec [-i|-t|-it] <container> <script> [args...]
-    """
-    if not Path("/var/run/docker.sock").exists():
-        return (127, "", "docker CLI missing and /var/run/docker.sock not mounted")
-
-    if len(cmd) < 4 or cmd[0] != "docker" or cmd[1] != "exec":
-        return (2, "", f"unsupported docker command: {' '.join(cmd)}")
-
-    idx = 2
-    while idx < len(cmd) and cmd[idx].startswith("-"):
-        idx += 1
-    if idx >= len(cmd):
-        return (2, "", "missing container name in docker exec command")
-    container = cmd[idx]
-    argv = cmd[idx + 1 :]
-    if not argv:
-        return (2, "", "missing command in docker exec")
-
-    session = requests_unixsocket.Session()
-    base = "http+unix://%2Fvar%2Frun%2Fdocker.sock"
-
-    try:
-        create = session.post(
-            f"{base}/containers/{container}/exec",
-            json={
-                "AttachStdout": True,
-                "AttachStderr": True,
-                "Tty": True,
-                "Cmd": argv,
-            },
-            timeout=min(timeout_s, 30),
-        )
-        if create.status_code >= 400:
-            return (1, "", f"docker exec create failed: HTTP {create.status_code} {create.text}")
-        exec_id = (create.json() or {}).get("Id")
-        if not exec_id:
-            return (1, "", "docker exec create failed: missing exec id")
-
-        start = session.post(
-            f"{base}/exec/{exec_id}/start",
-            json={"Detach": False, "Tty": True},
-            timeout=timeout_s,
-        )
-        combined = start.text if start.text is not None else ""
-
-        inspect = session.get(f"{base}/exec/{exec_id}/json", timeout=min(timeout_s, 30))
-        if inspect.status_code >= 400:
-            return (1, combined, f"docker exec inspect failed: HTTP {inspect.status_code} {inspect.text}")
-        exit_code = int((inspect.json() or {}).get("ExitCode") or 0)
-        if exit_code == 0:
-            return (0, combined, "")
-        return (exit_code, combined, "docker exec returned non-zero exit code")
-    except Exception as e:
-        return (1, "", f"docker socket exec error: {e}")
 
 
 def compute_container_name() -> str:
@@ -269,10 +385,31 @@ def check_http(url: str, timeout: int = 4) -> tuple[bool, str]:
         return (False, str(e))
 
 
-def dashboard_page() -> None:
-    st.subheader("Dashboard")
-    col1, col2, col3 = st.columns(3)
+def render_header() -> None:
+    left, right = st.columns([8, 2])
+    with left:
+        cols = st.columns([1, 12])
+        with cols[0]:
+            if LOGO_PATH.exists():
+                st.image(str(LOGO_PATH), width=42)
+        with cols[1]:
+            st.markdown(f"## {t('app.title')}")
+    with right:
+        current = get_lang()
+        st.markdown(t("lang.current", lang=current.upper()))
+        choice = st.selectbox(
+            t("lang.label"),
+            options=["ZH", "EN"],
+            index=0 if current == "zh" else 1,
+            label_visibility="collapsed",
+            key="lang_switch",
+        )
+        st.session_state.ui_lang = "zh" if choice == "ZH" else "en"
 
+
+def dashboard_page() -> None:
+    st.subheader(t("dashboard.title"))
+    col1, col2, col3 = st.columns(3)
     works = query_df("SELECT count(*) AS n FROM works")
     eh_works = query_df("SELECT count(*) AS n FROM eh_works")
     recent = query_df("SELECT max(last_fetched_at) AS latest FROM eh_works")
@@ -281,11 +418,11 @@ def dashboard_page() -> None:
     total_eh = int(eh_works.iloc[0]["n"]) if not eh_works.empty else 0
     last_fetch = str(recent.iloc[0]["latest"]) if not recent.empty else "-"
 
-    col1.metric("库内本子数(works)", total_works)
-    col2.metric("EH 元数据数(eh_works)", total_eh)
-    col3.metric("最近 EH 抓取", last_fetch)
+    col1.metric(t("dashboard.metric.works"), total_works)
+    col2.metric(t("dashboard.metric.eh_works"), total_eh)
+    col3.metric(t("dashboard.metric.last_fetch"), last_fetch)
 
-    st.markdown("### 系统健康")
+    st.markdown(f"### {t('dashboard.health')}")
     lrr_base = os.getenv("LRR_BASE", "http://lanraragi:3000").strip().rstrip("/")
     if not urlparse(lrr_base).scheme:
         lrr_base = f"http://{lrr_base}"
@@ -295,59 +432,55 @@ def dashboard_page() -> None:
     ok_lrr, msg_lrr = check_http(f"{lrr_base}/api/info")
     ok_compute, msg_compute = check_http(compute_health)
     c1, c2, c3 = st.columns(3)
-    c1.metric("LRR", "UP" if ok_lrr else "DOWN", msg_lrr)
-    c2.metric("Compute Agent", "UP" if ok_compute else "DOWN", msg_compute)
+    c1.metric(t("health.lrr"), t("status.up") if ok_lrr else t("status.down"), msg_lrr)
+    c2.metric(t("health.compute"), t("status.up") if ok_compute else t("status.down"), msg_compute)
     if openai_health:
         ok_llm, msg_llm = check_http(openai_health)
-        c3.metric("LLM", "UP" if ok_llm else "DOWN", msg_llm)
+        c3.metric(t("health.llm"), t("status.up") if ok_llm else t("status.down"), msg_llm)
     else:
-        c3.metric("LLM", "N/A", "Set OPENAI_HEALTH_URL")
+        c3.metric(t("health.llm"), t("status.na"), t("health.llm.na"))
 
 
 def control_page() -> None:
-    st.subheader("Control")
-    st.markdown("### Manual Trigger")
+    st.subheader(t("control.title"))
+    st.markdown(f"### {t('control.manual')}")
     col1, col2, col3 = st.columns(3)
-    if col1.button("立即爬取 EH", use_container_width=True):
-        result = run_task("eh_fetch_manual", ["/app/ehCrawler/run_eh_fetch.sh"])
-        st.write(result)
-    if col2.button("导出 LRR", use_container_width=True):
-        result = run_task("lrr_export_manual", ["/app/lrrDataFlush/run_daily_lrr_export.sh"])
-        st.write(result)
-    if col3.button("文本入库", use_container_width=True):
-        result = run_task("text_ingest_manual", ["/app/textIngest/run_daily_text_ingest.sh"])
-        st.write(result)
+    if col1.button(t("control.btn.eh_fetch"), width="stretch"):
+        st.write(run_task("eh_fetch_manual", ["/app/ehCrawler/run_eh_fetch.sh"]))
+    if col2.button(t("control.btn.lrr_export"), width="stretch"):
+        st.write(run_task("lrr_export_manual", ["/app/lrrDataFlush/run_daily_lrr_export.sh"]))
+    if col3.button(t("control.btn.text_ingest"), width="stretch"):
+        st.write(run_task("text_ingest_manual", ["/app/textIngest/run_daily_text_ingest.sh"]))
 
-    st.markdown("### Manual Trigger (Compute)")
-    st.caption("需要 data-ui 容器可访问 Docker Socket，并且 compute 容器名正确。")
+    st.markdown(f"### {t('control.manual.compute')}")
+    st.caption(t("control.caption.compute"))
+    worker_args = st.text_input(t("control.worker.args"), value="--limit 20 --only-missing", help=t("control.worker.args.help"))
     c4, c5, c6 = st.columns(3)
-    worker_args = st.text_input("run_worker 参数", value="--limit 20 --only-missing", help="会直接追加到 run_worker.sh 后")
-    if c4.button("向量入库 run_worker", use_container_width=True):
+    if c4.button(t("control.btn.compute_worker"), width="stretch"):
         args = [a for a in worker_args.split(" ") if a.strip()]
-        result = run_task("compute_run_worker_manual", compute_exec_cmd("/app/vectorIngest/run_worker.sh", args))
-        st.write(result)
-    if c5.button("EH 入库 run_eh_ingest", use_container_width=True):
-        result = run_task("compute_run_eh_ingest_manual", compute_exec_cmd("/app/vectorIngest/run_eh_ingest.sh"))
-        st.write(result)
-    if c6.button("日常入库 run_daily", use_container_width=True):
-        result = run_task("compute_run_daily_manual", compute_exec_cmd("/app/vectorIngest/run_daily.sh"))
-        st.write(result)
+        st.write(run_task("compute_run_worker_manual", compute_exec_cmd("/app/vectorIngest/run_worker.sh", args)))
+    if c5.button(t("control.btn.compute_eh_ingest"), width="stretch"):
+        st.write(run_task("compute_run_eh_ingest_manual", compute_exec_cmd("/app/vectorIngest/run_eh_ingest.sh")))
+    if c6.button(t("control.btn.compute_daily"), width="stretch"):
+        st.write(run_task("compute_run_daily_manual", compute_exec_cmd("/app/vectorIngest/run_daily.sh")))
 
-    st.markdown("### Scheduler")
+    st.markdown(f"### {t('control.scheduler')}")
     cfg = load_schedule()
+    labels = {
+        "eh_fetch": t("scheduler.eh_fetch"),
+        "lrr_export": t("scheduler.lrr_export"),
+        "text_ingest": t("scheduler.text_ingest"),
+        "compute_daily": t("scheduler.compute_daily"),
+    }
     with st.form("scheduler_form"):
-        out = {}
-        for key, label in [
-            ("eh_fetch", "EH Fetch"),
-            ("lrr_export", "LRR Export"),
-            ("text_ingest", "Text Ingest"),
-            ("compute_daily", "Compute run_daily"),
-        ]:
+        out: dict[str, Any] = {}
+        for key in ["eh_fetch", "lrr_export", "text_ingest", "compute_daily"]:
+            label = labels[key]
             st.markdown(f"**{label}**")
             c1, c2 = st.columns([1, 2])
-            enabled = c1.checkbox(f"启用 {label}", value=bool(cfg.get(key, {}).get("enabled", False)), key=f"en_{key}")
+            enabled = c1.checkbox(t("control.scheduler.enable", label=label), value=bool(cfg.get(key, {}).get("enabled", False)), key=f"en_{key}")
             mins = c2.number_input(
-                f"间隔(分钟) {label}",
+                t("control.scheduler.interval", label=label),
                 min_value=1,
                 max_value=24 * 60,
                 value=int(cfg.get(key, {}).get("interval_minutes", 60)),
@@ -355,26 +488,25 @@ def control_page() -> None:
             )
             out[key] = {"enabled": enabled, "interval_minutes": int(mins)}
 
-        submitted = st.form_submit_button("保存定时配置")
-        if submitted:
+        if st.form_submit_button(t("control.scheduler.save")):
             save_schedule(out)
             sync_scheduler()
-            st.success("已保存并应用定时任务。")
+            st.success(t("control.scheduler.saved"))
 
 
 def audit_page() -> None:
-    st.subheader("Audit")
-    st.markdown("### 最近任务记录")
+    st.subheader(t("audit.title"))
+    st.markdown(f"### {t('audit.history')}")
     rows = load_run_history(limit=300)
     if rows:
         df = pd.DataFrame(rows)
         st.dataframe(df.sort_values("ts", ascending=False), width="stretch", hide_index=True)
     else:
-        st.info("暂无任务记录。")
+        st.info(t("audit.no_history"))
 
-    st.markdown("### 日志预览")
+    st.markdown(f"### {t('audit.logs')}")
     logs = sorted(TASK_LOG_DIR.glob("*.log"), reverse=True)
-    pick = st.selectbox("选择日志文件", options=[str(p.name) for p in logs] if logs else ["<none>"])
+    pick = st.selectbox(t("audit.select_log"), options=[str(p.name) for p in logs] if logs else ["<none>"])
     if logs and pick != "<none>":
         p = TASK_LOG_DIR / pick
         txt = p.read_text(encoding="utf-8", errors="replace")
@@ -382,9 +514,9 @@ def audit_page() -> None:
 
 
 def xp_map_page() -> None:
-    st.subheader("XP 地形图")
-    days = st.slider("统计窗口(天)", min_value=3, max_value=90, value=30)
-    k = st.slider("聚类数", min_value=2, max_value=8, value=3)
+    st.subheader(t("xp.title"))
+    days = st.slider(t("xp.days"), min_value=3, max_value=90, value=30)
+    k = st.slider(t("xp.k"), min_value=2, max_value=8, value=3)
 
     sql = (
         "SELECT w.arcid, w.title, w.tags "
@@ -395,12 +527,12 @@ def xp_map_page() -> None:
     )
     df = query_df(sql, (days * 86400,))
     if df.empty:
-        st.warning("暂无足够阅读记录用于聚类。")
+        st.warning(t("xp.no_data"))
         return
 
     docs = [" ".join((tags or [])) for tags in df["tags"].tolist()]
     if len(docs) < 4 or sum(len(d.strip()) > 0 for d in docs) < 4:
-        st.warning("可用于聚类的标签文本不足。")
+        st.warning(t("xp.no_tags"))
         return
 
     vec = TfidfVectorizer(max_features=3000, token_pattern=r"[^\s]+")
@@ -421,17 +553,18 @@ def xp_map_page() -> None:
             "arcid": df["arcid"].astype(str),
         }
     )
-    fig = px.scatter(plot_df, x="x", y="y", color="cluster", hover_data=["title", "arcid"], title="XP Clusters (PCA 2D)")
+    fig = px.scatter(plot_df, x="x", y="y", color="cluster", hover_data=["title", "arcid"], title=t("xp.chart_title"))
     st.plotly_chart(fig, width="stretch")
 
 
 def main() -> None:
-    st.set_page_config(page_title="AutoEhHunter Data UI", layout="wide")
+    page_icon = str(LOGO_PATH) if LOGO_PATH.exists() else "🌐"
+    st.set_page_config(page_title=t("app.title"), page_icon=page_icon, layout="wide")
     ensure_dirs()
     sync_scheduler()
+    render_header()
 
-    st.title("AutoEhHunter Data UI")
-    tab1, tab2, tab3, tab4 = st.tabs(["Dashboard", "Control", "Audit", "XP Map"])
+    tab1, tab2, tab3, tab4 = st.tabs([t("tab.dashboard"), t("tab.control"), t("tab.audit"), t("tab.xp_map")])
     with tab1:
         dashboard_page()
     with tab2:

@@ -90,7 +90,7 @@
 1.  **配置 n8n https访问**：
     * 访问n8n webui默认需要HTTPS协议，建议使用 Cloudflare Tunnel 或 Tailscale Funnel 将 n8n 端口暴露为 HTTPS。详细步骤请参考[n8n官方文档](https://docs.n8n.io/hosting/)
 2.  **进入 n8n**：
-    * 浏览器打开 `https://<n8n容器IP/telnet地址>:5678`。
+    * 浏览器打开 `https://<n8n容器IP/隧道地址>:5678`。
 
 3.  **导入工作流**：
     * 导入 `./Companion/n8nWorkflows/Main Agent.json` (主意图识别)。
