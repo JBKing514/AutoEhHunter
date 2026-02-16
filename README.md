@@ -1,313 +1,171 @@
-# AutoEhHunter
-
-一个面向 LANraragi + EH 数据源的全栈多模态 RAG 项目，包含：
-
-- 数据面（Data Plane）：LRR 元数据/阅读记录导出、EH 增量 URL 抓取、文本入库。
-- 算力面（Compute Plane）：`hunterAgent` 技能服务、向量入库 worker、EH 元数据入库与封面 SigLIP 向量化。
-- 编排与客户端（Companion）：n8n 工作流模板、Mihon 定制 LRR 插件源码与构建产物。
-
-当前仓库已按部署职责拆分为 `Docker/` 与 `Companion/`。
-
-## 项目结构
-
-```text
-AutoEhHunter/
-  Docker/
-    compute/                      # hunterAgent + vectorIngest
-    data/                         # ehCrawler + lrrDataFlush + textIngest
-    compute_docker-compose.yml
-    data_docker-compose.yml
-    pg17_docker-compose.yml
-    n8n_docker-compose.yml
-  Companion/
-    n8nWorkflows/                 # 工作流模板（独立分发）
-    lrrMihonExtentionHistory/     # Mihon 插件源码/构建产物
-```
-
-## 功能总览
-
-- `Data` 容器
-  - EH 增量 URL 抓取：`ehCrawler/fetch_new_eh_urls.py`
-  - LRR 全量元数据导出：`lrrDataFlush/export_lrr_metadata.py`
-  - LRR 最近阅读导出：`lrrDataFlush/export_lrr_recent_reads.py`
-  - JSONL 入库 PG：`textIngest/ingest_jsonl_to_postgres.py`
-  - Data UI：`webui/app.py`（Dashboard/Control/Audit/XP Map）
-  - 首次启动自动 schema 初始化（一次性）
-- `Compute` 容器
-  - `hunterAgent` 技能服务（search/profile/report/recommendation/chat）
-  - 向量 worker：`vectorIngest/worker_vl_ingest.py`
-  - EH 元数据入库：`vectorIngest/ingest_eh_metadata_to_pg.py`
-
-## 部署前准备
-
-- Docker 27+（无 `docker compose` 也可部署，见下文纯 Docker 命令）
-- 可访问的 PostgreSQL（建议 pgvector）
-- 可访问的 OpenAI 兼容后端（`/v1`）：可用 `ollama`、`llama.cpp`、`LM Studio` 等
-- LANraragi 服务可访问
-
-## 硬件需求
+# AutoEhHunter (Project Alice)
 
-- `data` 容器
-  - 资源要求低，`RAM < 512MB` 也可运行
-  - 镜像体积约 `1.1GB`
-- `compute` 容器
-  - 会调用 SigLIP；当前默认走 CPU 兼容路径
-  - 推荐 `8` 核以上 CPU，否则向量入库/搜图可能明显变慢
-  - 可选 GPU 加速（需自行处理 PyTorch 版本与 CUDA 兼容）
-  - 特别提示：`50 系 / Blackwell` 架构通常需要手动安装匹配版本，并在环境变量中启用 GPU
-  - 镜像体积约 `8.0GB`
-- LLM 侧
-  - 需使用 OpenAI 兼容 API（`/v1`）
-  - 当前提示词主要针对 `Qwen3-Next-80B-A3B-Instruct` 调优
-  - 其他模型可能出现输出质量下降，后续需要单独调 prompt
-  - 搜索/推荐核心流程为代码逻辑驱动，即使无 LLM 或提示词效果较差，仍可运行基础检索推荐
-
-建议先建 private 仓库验证，再公开。
-
-## 当前状态评估
-
-- 功能链路：已形成完整闭环（抓取/导出 -> 清洗入库 -> 向量检索与推荐 -> Agent -> n8n/Telegram -> 阅读回流）
-- 工程状态：容器化完成（`data` + `compute` + 可选 `data-ui`），支持 compose 与非 compose 部署
-- 安全状态：敏感信息已模板化；当前扫描未发现明显 token/私网硬编码残留
-- 发布建议：可以推 private repo 做第一轮外部验证，再根据反馈整理公开版本
-
-## 1) 配置文件
-
-在 `Docker/` 目录执行：
-
-```bash
-cp compute/.env.example compute/.env
-cp data/.env.example data/.env
-```
-
-重点配置项：
-
-- `compute/.env`
-  - `POSTGRES_DSN`
-  - `LRR_BASE` / `LRR_API_KEY`
-  - `LLM_API_BASE` / `EMB_API_BASE` / `LLM_MODEL` / `EMB_MODEL`
-  - `VL_BASE` / `EMB_BASE` / `VL_MODEL_ID` / `EMB_MODEL_ID`
-- `data/.env`
-  - `POSTGRES_DSN`
-  - `LRR_HOST` / `LRR_PORT` / `LRR_API_KEY`
-  - `EH_COOKIE`（需要抓取 EH 时）
-
-## 2) 启动 PostgreSQL（示例）
-
-`Docker/pg17_docker-compose.yml` 已改为读取环境变量密码：
-
-```bash
-export POSTGRES_PASSWORD='your_strong_password'
-docker compose -f pg17_docker-compose.yml up -d
-```
+### 面向 E-Hentai 与 LANraragi 的私有化多模态 RAG 智能体
 
-若无 `docker compose`，请用你现有的容器管理方式（Unraid UI 或 `docker run` 等价配置）。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/) [![Architecture](https://img.shields.io/badge/Architecture-Split%20Plane-purple)](docs/ARCHITECTURE.md)
 
-## 3) 启动 Compute（两种方式）
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/placeholder-for-xp-map-image" width="800" alt="User Preference Manifold (XP Map)">
+  <br>
+  <em>AutoEhHunter</em>
+</p>
 
-### A. compose
+## 💡 开发初衷 (Motivation)
 
-```bash
-docker compose -f compute_docker-compose.yml up -d --build
-```
+**“为什么我记得封面长什么样，记得剧情，却因为想不起那个该死的 Tag / 标题 而找不到那本书？”**
 
-### B. 纯 Docker（推荐给无 compose 环境）
+AutoEhHunter 诞生于对现有 E-Hentai 和 LANraragi 搜索机制的深深沮丧。传统的基于关键词和布尔逻辑的检索系统，本质上是反人类的——它要求用户像数据库一样思考，必须精确命中元数据才能获得反馈。
 
-```bash
-docker build -t autoeh-compute:local -f compute/Dockerfile .
+但人类的欲望是模糊的、感性的、视觉主导的。
 
-docker run -d \
-  --name autoeh-compute \
-  --restart unless-stopped \
-  --env-file compute/.env \
-  -p 18080:18080 \
-  -v "$(pwd)/compute/runtime:/app/runtime" \
-  -v "$(pwd)/compute/hf_cache:/root/.cache/huggingface" \
-  -v "$(pwd)/compute/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
-  autoeh-compute:local agent
-```
+我开发 **AutoEhHunter** 的初衷，就是为了打破这种认知的隔阂。我想构建一个不是让我去“搜 Tag”，而是能听懂我说“找点这种感觉的”或者“最近想看点重口的”系统。它不应该只是一个冷冰冰的归档工具，而应该是一个能理解画面、读懂剧情、甚至比我更懂我自己 XP 的**战术副官**。
+
+## 🌌 项目概览 (Overview)
+
+**AutoEhHunter** 是一个自主认知智能体，作为 **私有化 RAG (检索增强生成) 系统** 运行。它将您的本地库和外部 EH 数据库视为一个高维向量空间，利用 **SigLIP** 进行视觉理解，并配合 **LLM Agents** 进行语义推理，将被动的“浏览”转化为主动的、智能化的“战术交互”。
+
+> **"停止搜索。开始对齐。"**
+
+## 🏗️ 系统架构 (Architecture)
+
+<p align="center">
+  <img src="AutoEhHunter_Diagram_ZH.png" width="800" alt="AutoEhHunter_Diagram_ZH">
+  <br>
+  <em>AutoEhHunter结构图</em>
+</p>
+
+系统采用 **分离平面架构 (Split-Plane Architecture)**，将重型计算与持久化存储解耦。
+
+| 平面 (Plane) | 组件 (Component) | 职责 | 技术栈 |
+| :--- | :--- | :--- | :--- |
+| **控制面 (Control)** | **Agent** | 意图识别、人格渲染、工作流编排。 | **n8n**, Telegram Bot API, LLM |
+| **算力面 (Cortex)** | **Compute** | 视觉嵌入 (SigLIP)、向量索引构建、XP 聚类分析。 | **PyTorch**, SigLIP, Scikit-learn，VL视觉模型 |
+| **数据面 (Logistics)** | **Data** | 漏斗爬虫、元数据清洗、持久化存储。 | **PostgreSQL** (pgvector), LANraragi |
+
+## 🧩 核心特性 (Core Features)
+
+### 1. 多模态语义检索
+* **视觉搜索**：上传一张图片，系统基于 SigLIP 寻找构图、画风或特征相似的作品。
+* **混合查询**：支持复杂的自然语言指令，如“找一些画风像某画师但剧情纯爱的作品”。
+* **影子库 (Shadow Library)**：在下载之前，即可针对外部 E-Hentai 数据库进行深度向量检索。
 
-健康检查：
+### 2. 生态闭环与数据工程
+AutoEhHunter 不仅仅是一个搜索器，更是一整套数据治理方案：
+* **漏斗式 EH 爬虫 (Funnel Crawler)**：
+    * 采用“轻量级元数据抓取 -> 规则过滤 -> 算力入库”的漏斗机制。
+    * 仅对符合您 Rating/Tag 偏好的作品调用 GPU 算力，极大降低计算负载。
+* **Mihon 定制 LRR 插件**：
+    * 修改版 Mihon (Tachiyomi) 扩展，支持调用 LRR API 回传阅读记录。
+    * 无论是在 PC 还是手机阅读，您的 XP 行为数据都会回流至系统，用于修正推荐算法。
+* **增强型 Ehentai.pm 插件**：
+    * 深度改造 LANraragi 内置插件，支持从 `metadata`, `comicinfo.xml`, `ehviewer` 等多种来源提取元数据。
+    * 内置 EH API 回落机制与**中文标签自动翻译**，确保元数据的一致性与可读性。
 
-```bash
-curl http://127.0.0.1:18080/health
-```
+### 3. XP 聚类驱动的推荐机制
+* **XP 地图**：将您的阅读历史可视化为高维簇的 2D 投影。
+* **漂移检测**：Agent 会监控您的阅读习惯，并生成报告分析您的偏好演变。
+* **智能截击**：利用 K-Means 聚类锁定您的“好球区”向量，自动拦截数学上与您口味对齐的新上传资源。
 
-## 4) 启动 Data（两种方式）
+### 4. 战术副官（Agent）
+* **叙事报告**：拒绝枯燥的 JSON。获取由“赛博副官”撰写的日报/周报，风格毒舌且切中要害。
+* **情境感知**：能够理解“帮我找某本特定的书”与“我无聊了，推点东西”之间的区别。
 
-### A. compose
+## ⚙️ 容器规格与资源需求 (Requirements)
 
-```bash
-docker compose -f data_docker-compose.yml up -d --build
-```
+本项目采用微服务设计，您可以根据硬件条件灵活部署。
 
-### B. 纯 Docker（推荐给无 compose 环境）
+### `data` 容器 (数据面)
+* **定位**：常驻运行，负责爬虫、数据库与 Web UI。
+* **资源要求**：极低。`RAM < 512MB` 即可稳定运行。
+* **镜像体积**：约 `1.1GB`。
+* **建议部署**：NAS、树莓派或低功耗服务器。
 
-```bash
-docker build -t autoeh-data:local -f data/Dockerfile .
+### `compute` 容器 (算力面)
+* **定位**：按需或常驻，负责 SigLIP 视觉嵌入与向量计算。
+* **CPU 模式**：
+    * 默认兼容模式。
+    * **推荐**：`8` 核以上 CPU，否则向量入库与搜图速度会明显变慢。
+* **GPU 加速 (可选)**：
+    * 支持 CUDA 加速，需自行处理 PyTorch 版本兼容性。
+    * **特别提示**：对于 NVIDIA **RTX 50 系列 / Blackwell** 架构显卡，通常需要手动安装最新的 PyTorch Nightly 版本，并在环境变量中显式启用 GPU。
+* **镜像体积**：约 `8.0GB` (包含 PyTorch 与预训练模型)。
 
-docker run -d \
-  --name autoeh-data \
-  --restart unless-stopped \
-  --env-file data/.env \
-  -v "$(pwd)/data/runtime:/app/runtime" \
-  -v "$(pwd)/data/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
-  autoeh-data:local shell -lc "sleep infinity"
-```
-
-Data UI（同镜像独立服务）：
-
-```bash
-docker run -d \
-  --name autoeh-data-ui \
-  --restart unless-stopped \
-  --env-file data/.env \
-  -p 8501:8501 \
-  -v "$(pwd)/data/runtime:/app/runtime" \
-  -v "$(pwd)/data/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  autoeh-data:local data-ui
-```
-
-说明：Data UI 支持手动触发 compute 侧脚本（`run_worker.sh` / `run_eh_ingest.sh` / `run_daily.sh`）
-以及定时执行 `run_daily.sh`。需确保 `COMPUTE_CONTAINER_NAME` 与实际容器名一致。
-
-## 5) 运行日常任务
-
-在 Data 容器执行：
-
-```bash
-docker exec -it autoeh-data /app/ehCrawler/run_eh_fetch.sh
-docker exec -it autoeh-data /app/lrrDataFlush/run_daily_lrr_export.sh
-docker exec -it autoeh-data /app/textIngest/run_daily_text_ingest.sh
-```
-
-在 Compute 容器执行：
-
-```bash
-docker exec -it autoeh-compute /app/vectorIngest/run_worker.sh --limit 20 --only-missing
-docker exec -it autoeh-compute /app/vectorIngest/run_eh_ingest.sh
-docker exec -it autoeh-compute /app/vectorIngest/run_daily.sh
-```
+## 🧠 模型架构与配置策略 (Model Architecture)
 
-## 5.1) Data UI（Streamlit）能力
-
-- Dashboard：库规模、最近抓取时间、LRR/Compute/LLM 健康状态
-- Control：手动触发 Data/Compute 侧任务（含 `run_worker`、`run_eh_ingest`、`run_daily`）
-- Scheduler：定时触发 Data 侧流程与 Compute `run_daily`
-- Audit：任务运行历史 + 日志预览
-- XP Map：基于阅读记录标签的聚类可视化（PCA 2D）
+AutoEhHunter 采用 **"专人专用" (Specialized Models)** 的策略来平衡性能与显存开销。虽然项目支持任意 OpenAI 兼容后端，但为了确保数据库 Schema 兼容性和最佳体验，请遵循以下配置规范。
 
-## 6) 跨容器 EH 队列共享（关键）
+> **⚠️ 关于内容合规性 (Content Safety)**：
+> 鉴于本项目处理的数据性质（包含大量 NSFW 内容），标准商业模型或过度对齐的模型可能会频繁触发拒绝机制。
+> **强烈建议** 采用本地部署的 **Abliterated (去审查)** 或 **Uncensored (无限制)** 版本模型，以确保视觉描述和角色扮演功能的稳定性。
 
-Data 与 Compute 必须共享同一宿主目录并映射到容器内同一路径：
+### 1. 文本嵌入模型 (Embedding Model) - **必选**
+* **指定模型**: `BAAI/bge-m3`
+* **硬性约束**: **必须使用此模型**（或输出维度为 `1024` 的同类模型）。
+* **原因**: 数据库 Schema 中 `desc_embedding` 字段被硬编码为 `vector(1024)`。
+    * *反例*: 如果使用 OpenAI `text-embedding-3-small` (1536 dim) 或 `bge-large` (1024 dim)，请务必确认维度匹配，否则入库会报错。
+    * `bge-m3` 在多语言（中日韩）语义检索上具有 SOTA 级别的表现，完美契合 EH 的多语言环境。
 
-- 宿主机：`./data/eh_ingest_cache` 与 `./compute/eh_ingest_cache` 可指向同一实际目录（推荐软链接或统一挂载）
-- 容器内统一：`/app/runtime/eh_ingest_cache`
+### 2. 视觉-语言模型 (VLM) - **必选**
+* **用途**: 为本地库的图片生成高质量的“自然语言描述”，用于补充 Tag 无法覆盖的语义（如“构图”、“氛围”、“剧情推测”）。
+* **推荐配置**:
+    * **均衡型 (开发环境基准)**: `Huihui-Qwen3-VL-8B-Instruct-abliterated` (或其他 Qwen2.5/3-VL 衍生版)。
+        * *特点*: 速度快，描述准确，且经 Abliteration 处理后不会回避对敏感画面的描述。
+    * **高配型**: `Qwen2.5-VL-72B` 或 `Llama-3.2-90B-Vision`。
+        * *特点*: 提供更文学化、细节更丰富的描述，适合追求极致检索精度的用户。
+    * **All-in-One**: 控制面的大模型（如 30B+ VLM）也可兼任此职，但需精调 Prompt 以防止模型在描述时产生幻觉或过度发散。
 
-并保证：
+### 3. 控制面大模型 (Agent LLM) - **核心**
+* **用途**: 意图识别 (Router) 与 最终叙事渲染 (NLG)。
+* **推荐配置**:
+    * **最佳体验**: `Qwen3-Next-80B-A3B-Instruct` (推荐量化: IQ4_XS)。
+        * **特化适配**: 本项目 Prompt 针对 Qwen 系列的指令遵循能力与中文语感进行了深度调优。
+        * **沉浸感**: 80B 级别的大参数模型能提供远超小模型的“战术副官”扮演体验。
+        * **实测表现**: 在开发测试中，该模型的原生 Instruct 版本对 System Prompt 的依从性极高，**极少拒绝用户的敏感请求**，因此通常无需寻找专门的 Abliterated 版本即可获得稳定的输出。
+    * **最低要求**: `7B` 以上参数量的 Instruct 模型。
+        * *警告*: 过小的模型可能无法严格遵循 JSON 输出格式，导致意图识别失败并回退到默认的关键词搜索模式。
+  
+---
 
-- Data 写：`EH_QUEUE_FILE=/app/runtime/eh_ingest_cache/eh_gallery_queue.txt`
-- Compute 读：`EH_QUEUE_FILE=/app/runtime/eh_ingest_cache/eh_gallery_queue.txt`
+### 🚧 提示词工程与本地化 (Prompt Engineering & Localization)
 
-**⚠️ 警告：`eh_ingest_cache` 共享目录绝对不能配置错。**
-**⚠️ 一旦 Data 写入目录与 Compute 读取目录不一致，EH 增量抓取 -> 入库闭环会直接断开。**
-
-## 网络拓扑（Split 部署）
-
-- 支持存算分离：`Data` 与 `Compute` 可以部署在不同机器
-- 需要确保以下网络连通性：
-  - Data -> PostgreSQL
-  - Compute -> PostgreSQL
-  - Compute -> OpenAI 兼容后端（LLM / Embedding / VLM）
-  - n8n -> hunterAgent（compute）
-  - Data UI -> Compute（health）
-- 若跨机器，优先使用固定内网 IP + 明确端口映射，避免容器名解析依赖
-
-## 重要环境变量
-
-### Data 容器（`Docker/data/.env`）
-
-- 数据库
-  - `POSTGRES_DSN`
-  - `DB_INIT_ON_START` / `DB_INIT_SCHEMA` / `DB_INIT_LOG`
-- LRR 导出
-  - `LRR_HOST` / `LRR_PORT` / `LRR_SCHEME` / `LRR_API_KEY`
-  - `LRR_METADATA_OUT` / `LRR_READS_OUT` / `LRR_READS_HOURS`
-- EH 抓取
-  - `EH_COOKIE` / `EH_QUEUE_FILE` / `EH_STATE_FILE`
-- Text Ingest
-  - `TEXT_INGEST_INPUT` / `TEXT_INGEST_PRUNE_NOT_SEEN` / `TEXT_INGEST_MIN_FULL_BYTES`
-- Data UI
-  - `DATA_UI_PORT` / `DATA_UI_RUNTIME_DIR`
-  - `COMPUTE_HEALTH_URL` / `COMPUTE_CONTAINER_NAME`
-
-### Compute 容器（`Docker/compute/.env`）
-
-- 数据库与 LRR
-  - `POSTGRES_DSN`
-  - `LRR_BASE` / `LRR_API_KEY`
-- OpenAI 兼容接口
-  - `LLM_API_BASE` / `LLM_MODEL` / `LLM_API_KEY`
-  - `EMB_API_BASE` / `EMB_MODEL` / `EMB_API_KEY`
-  - `VL_BASE` / `VL_MODEL_ID`
-- SigLIP
-  - `SIGLIP_MODEL` / `SIGLIP_DEVICE`
-- EH 入库
-  - `EH_QUEUE_FILE` / `EH_API_URL` / `EH_COOKIE`
-
-## 7) Companion 说明
-
-- `Companion/n8nWorkflows/` 提供工作流模板，不是 Docker 镜像的一部分。
-- 导入 n8n 前请替换占位符：
-  - `{your_bot_token}`
-  - `{your_openai_url:port}`
-  - `{your_hunterAgent_url:port}`
-- 工作流名称已对齐为 `hunterAgent_sub`。
-
-## 常见问题（踩坑记录）
-
-- `docker compose` 不可用（Unraid 常见）
-  - 现象：`docker: 'compose' is not a docker command`
-  - 处理：用本 README 的纯 `docker build/run/exec` 流程。
-
-- `run_daily_lrr_export.sh` 报输出路径异常或花括号错误
-  - 现象：`Single '}' encountered in format string` / 文件名出现 `}.jsonl`
-  - 处理：已改为安全替换逻辑；仍建议检查 `LRR_READS_OUT` 格式。
-
-- 24h 阅读导出为 0
-  - 原因：LRR `lastread` 排序方向与直觉可能相反，已按当前项目实践处理。
-  - 建议：若异常，直接调用 `/api/search` 验证 `sortby=lastread` + `order` 行为后再调整。
-
-- Data 容器首次导出报目录不存在
-  - 处理：导出脚本已补目录自动创建；确保挂载目录存在且可写。
-
-- 首次启动 schema 初始化失败
-  - 查看：`/app/runtime/logs/db_init.log`
-  - 常见原因：`POSTGRES_DSN` 错误、数据库未启动、网络不可达。
-
-- `text-ingest-daily` 误删风险
-  - 已有防护：默认 `prune` 开启，但仅当 `FULL_JSONL` 存在且大于 `TEXT_INGEST_MIN_FULL_BYTES`（默认 500KB）才会执行。
-
-- 搜图/向量接口地址统一时 404
-  - 注意 `hunterAgent` 与 worker 的 base URL 拼接规则可能不同；不要盲目统一为同一字符串（是否带 `/v1` 要按脚本约定）。
-
-- Telegram 输出出现 thinking 内容
-  - 建议：工作流使用 instruct/chat 模型；避免 reasoning/thinking 直接透传。
-
-## 安全与发布建议
-
-- 推 GitHub 前二次检查：
-  - 无 `.env` 实文件
-  - 无 Bot Token/API Key/私网地址硬编码
-  - n8n 工作流 `pinData` 为空
-- 密钥一律使用环境变量注入，且定期轮换。
-- 建议先 private repo 试跑 1-2 轮，再公开。
-
-## 后续可选增强
-
-- 搜索增强：接入 OCR（内页文本提取）提升对白/剧情向检索召回
-- 搜索增强：接入 WD14 Tagger（看社区反馈决定默认开关）补充视觉标签语义
-- 入库增强：接入 ESRGAN / Anime4K 自动超分后再做特征抽取（可选 pipeline）/自动高清入库
-- 运营增强：A/B 对比不同模型与提示词模板，沉淀可回滚的 prompt 版本策略
-- 工程增强：增加 CI（JSON 校验、shellcheck、敏感信息扫描）与发布前自动检查
+本项目的 Agent 核心逻辑（意图识别与叙事渲染）深度依赖于 **Prompt Engineering**。目前的提示词库存在以下限制：
+
+* **基准模型绑定**: 所有 System Prompts 均针对 **`qwen3-next-80B-instruct`** 的指令遵循范式与 Attention 偏好进行了微调。
+    * **风险**: 使用其他模型架构（如 Llama-3, DeepSeek）或较小参数模型时，可能会出现 **JSON 输出格式错误**（导致 Router 崩溃）或 **角色扮演风格崩坏**（无限复读）。
+* **语言适配**: 当前版本仅针对 **简体中文** 环境进行了深度优化。
+    * 其他语言（英语、日语）的指令可能会被模型误解，或导致回复中出现中英夹杂的情况。
+    * **n8n 硬编码**: n8n 工作流中的部分兜底回复（Fallback Responses）目前为简体中文硬编码，亟待本地化 (i18n) 改造。
+
+#### 🤝 贡献指南
+我们热烈欢迎社区贡献针对其他主流模型（如 `Llama-3.1-70B`, `DeepSeek-V3`）或多语言环境（English/Japanese）的 Prompt 适配方案。
+
+如果您有意提交 PR，请务必参考 **`CONTRIBUTION.md`** 中的 **[提示词撰写规范]**。
+* **硬性指标**: 任何 Prompt 修改必须通过 `Intent Classifier` 的 **JSON 结构稳定性测试**，确保在 `temperature=0` 时能 100% 输出符合 Schema 的标准 JSON，以保障系统核心功能的鲁棒性。
+
+---
+
+## 🚀 快速开始 (Getting Started)
+
+AutoEhHunter 专为 Docker 环境设计。
+
+* 👉 **[快速启动指南 (STARTUP.md)](STARTUP.md)** - *5分钟内部署您的私人 Agent*
+* 👉 **[详细配置参考 (Docker/README.md)](Docker/README.md)** - *进阶环境变量说明*
+
+## 🛠️ 技术栈 (Technology Stack)
+
+* **向量数据库**: PostgreSQL 17 + `pgvector`
+* **视觉模型**: Google `SigLIP-SO400M`, Qwen系列VL模型
+* **编排引擎**: n8n (Workflow Automation)
+* **移动端**: Mihon (Android) + Custom LANraragi Plugin
+* **后端框架**: FastAPI (Python 3.10)，OpenAI兼容后端
+
+## ⚖️ 免责声明 (Disclaimer)
+
+本工具仅供 **信息检索研究与个人归档** 使用。用户需对使用本软件访问、下载或存储的所有内容承担全部责任。请务必遵守您所访问的任何外部网站的服务条款 (ToS)。
+
+---
+
+## 📧 联系与支持
+
+* **Issues**: 请使用 GitHub Issue Tracker 反馈 Bug。
+* **Discussion**: [GitHub Discussions]
