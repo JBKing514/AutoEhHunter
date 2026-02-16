@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/) [![Architecture](https://img.shields.io/badge/Architecture-Split%20Plane-purple)](docs/ARCHITECTURE.md)
 
 <p align="center">
-  <img src="media/ico/AutoEhHunterLogo_256.png" width="256" alt="AutoEhHunter_Ico">
+  <img src="https://github.com/JBKing514/autoEhHunter/blob/main/Media/ico/AutoEhHunterLogo_256.png" width="256" alt="AutoEhHunter_Ico">
   <br>
   <em>Project Logo</em>
 </p>
