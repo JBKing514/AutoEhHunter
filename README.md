@@ -31,7 +31,7 @@ AutoEhHunter 诞生于对现有 E-Hentai 和 LANraragi 搜索机制的深深沮�
 <p align="center">
   <img src="AutoEhHunter_Diagram_ZH.png" width="800" alt="AutoEhHunter_Diagram_ZH">
   <br>
-  <em>AutoEhHunter结构图</em>
+  <em>AutoEhHunter架构图</em>
 </p>
 
 系统采用 **分离平面架构 (Split-Plane Architecture)**，将重型计算与持久化存储解耦。
@@ -47,15 +47,15 @@ AutoEhHunter 诞生于对现有 E-Hentai 和 LANraragi 搜索机制的深深沮�
 ### 1. 多模态语义检索
 * **视觉搜索**：上传一张图片，系统基于 SigLIP 寻找构图、画风或特征相似的作品。
 * **混合查询**：支持复杂的自然语言指令，如“找一些画风像某画师但剧情纯爱的作品”。
-* **影子库 (Shadow Library)**：在下载之前，即可针对外部 E-Hentai 数据库进行深度向量检索。
+* **影子库 (Shadow Library)**：在下载之前，即可调用爬虫针对外部 E-Hentai 进行爬取入库后进行深度向量检索。
 
 ### 2. 生态闭环与数据工程
 AutoEhHunter 不仅仅是一个搜索器，更是一整套数据治理方案：
 * **漏斗式 EH 爬虫 (Funnel Crawler)**：
     * 采用“轻量级元数据抓取 -> 规则过滤 -> 算力入库”的漏斗机制。
     * 仅对符合您 Rating/Tag 偏好的作品调用 GPU 算力，极大降低计算负载。
-* **Mihon 定制 LRR 插件**：
-    * 修改版 Mihon (Tachiyomi) 扩展，支持调用 LRR API 回传阅读记录。
+* **Mihon 定制 LANraragi 插件**：
+    * 修改版 Mihon (Tachiyomi) 扩展，支持调用 LANraragi API 回传阅读记录。
     * 无论是在 PC 还是手机阅读，您的 XP 行为数据都会回流至系统，用于修正推荐算法。
 * **增强型 Ehentai.pm 插件**：
     * 深度改造 LANraragi 内置插件，支持从 `metadata`, `comicinfo.xml`, `ehviewer` 等多种来源提取元数据。
@@ -117,12 +117,12 @@ AutoEhHunter 采用 **"专人专用" (Specialized Models)** 的策略来平衡�
 ### 3. 控制面大模型 (Agent LLM) - **核心**
 * **用途**: 意图识别 (Router) 与 最终叙事渲染 (NLG)。
 * **推荐配置**:
-    * **最佳体验**: `Qwen3-Next-80B-A3B-Instruct` (推荐量化: IQ4_XS)。
+    * **最佳体验**: `Qwen3-Next-80B-A3B-Instruct` (开发时选择量化: IQ4_XS)。
         * **特化适配**: 本项目 Prompt 针对 Qwen 系列的指令遵循能力与中文语感进行了深度调优。
         * **沉浸感**: 80B 级别的大参数模型能提供远超小模型的“战术副官”扮演体验。
         * **实测表现**: 在开发测试中，该模型的原生 Instruct 版本对 System Prompt 的依从性极高，**极少拒绝用户的敏感请求**，因此通常无需寻找专门的 Abliterated 版本即可获得稳定的输出。
-    * **最低要求**: `7B` 以上参数量的 Instruct 模型。
-        * *警告*: 过小的模型可能无法严格遵循 JSON 输出格式，导致意图识别失败并回退到默认的关键词搜索模式。
+    * **最低要求**: `7B` 以上参数量的 Instruct/Chat 模型。
+        * *警告*: 过小的模型可能无法严格遵循 JSON 输出格式，导致意图识别失败并回退到默认的关键词搜索模式。Thinking模型暂不支持，目前Skill无法提取Context字段。
   
 ---
 
@@ -130,7 +130,7 @@ AutoEhHunter 采用 **"专人专用" (Specialized Models)** 的策略来平衡�
 
 本项目的 Agent 核心逻辑（意图识别与叙事渲染）深度依赖于 **Prompt Engineering**。目前的提示词库存在以下限制：
 
-* **基准模型绑定**: 所有 System Prompts 均针对 **`qwen3-next-80B-instruct`** 的指令遵循范式与 Attention 偏好进行了微调。
+* **基准模型绑定**: 所有 System Prompts 均针对 **`Qwen3-Next-80B-A3B-Instruct`** 的指令遵循范式与 Attention 偏好进行了微调。
     * **风险**: 使用其他模型架构（如 Llama-3, DeepSeek）或较小参数模型时，可能会出现 **JSON 输出格式错误**（导致 Router 崩溃）或 **角色扮演风格崩坏**（无限复读）。
 * **语言适配**: 当前版本仅针对 **简体中文** 环境进行了深度优化。
     * 其他语言（英语、日语）的指令可能会被模型误解，或导致回复中出现中英夹杂的情况。
@@ -139,7 +139,7 @@ AutoEhHunter 采用 **"专人专用" (Specialized Models)** 的策略来平衡�
 #### 🤝 贡献指南
 我们热烈欢迎社区贡献针对其他主流模型（如 `Llama-3.1-70B`, `DeepSeek-V3`）或多语言环境（English/Japanese）的 Prompt 适配方案。
 
-如果您有意提交 PR，请务必参考 **`CONTRIBUTION.md`** 中的 **[提示词撰写规范]**。
+如果您有意提交 PR，请务必参考 [**CONTRIBUTING.md**](CONTRIBUTING.md) 中的 **[提示词示例]**。
 * **硬性指标**: 任何 Prompt 修改必须通过 `Intent Classifier` 的 **JSON 结构稳定性测试**，确保在 `temperature=0` 时能 100% 输出符合 Schema 的标准 JSON，以保障系统核心功能的鲁棒性。
 
 ---
@@ -149,8 +149,10 @@ AutoEhHunter 采用 **"专人专用" (Specialized Models)** 的策略来平衡�
 AutoEhHunter 专为 Docker 环境设计。
 
 * 👉 **[快速启动指南 (STARTUP.md)](STARTUP.md)** - *5分钟内部署您的私人 Agent*
-* 👉 **[详细配置参考 (Docker/README.md)](Docker/README.md)** - *进阶环境变量说明*
-
+* 👉 **[data容器详细配置参考](Docker/data/README.md)** - *进阶容器说明*
+* 👉 **[compute容器详细配置参考](Docker/compute/README.md)** - *进阶容器说明*
+* n8n，LANraragi，pgvector相关配置参考，请参考相关项目文档
+* 
 ## 🛠️ 技术栈 (Technology Stack)
 
 * **向量数据库**: PostgreSQL 17 + `pgvector`

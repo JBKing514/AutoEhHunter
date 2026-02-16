@@ -1,11 +1,9 @@
 # AutoEhHunter 快速启动指南
 
-本文档旨在帮助用户通过最简流程快速拉起 AutoEhHunter 系统。更详细的配置参数与架构说明请参阅 [README.md](README.md)。
-
 ## 0. 前提条件
 
 * **Docker 环境**：推荐安装 Docker Desktop 或 Docker Engine (v27+)。
-* **OpenAI 兼容后端**：你需要一个可用的 `/v1` 接口（如 `ollama`, `vLLM`, `LM Studio` 等），本项目不包含大模型后端。
+* **OpenAI 兼容后端**：你需要一个可用的 `/v1` 接口（如 `ollama`, `vLLM`, `LM Studio` 等），本项目不包含大模型后端，配置推荐在[README.md](README.md)。
 * **网络环境**：
     * Compute 容器启动时需连接 HuggingFace 下载 SigLIP 视觉模型。
     * Data 容器需能访问 E-Hentai (如果启用了爬虫)。
@@ -25,12 +23,16 @@
     cp Docker/data/.env.example Docker/data/.env
     ```
     > **提示**：请务必编辑 `.env` 文件，填入你的 Postgres 密码、LLM API 地址和 Key。
+    重要变量分列如下：
+    compute容器：Database，LANraragi，OpenAI-compatible endpoints必填，EH incremental ingest中的EH_COOKIE=建议填写，但不填也能调用EH API
+    data容器： Database，Data UI，LANraragi必填，EH queue fetch中的EH_COOKIE=建议填写，但不填也能调用EH API
+
 
 ## 2. 选择部署模式 (三选一)
 
 请根据你的硬件条件选择一种部署方式。
 
-### 选项 A：高性能单机 (AIO) - 推荐
+### 选项 A：高性能单机 (AIO)
 *适用场景：拥有一台显存/内存充足的工作站，希望所有服务跑在一起。*
 
 1.  **修改配置**：打开项目根目录的 `docker-compose.aio.yml`。
@@ -70,38 +72,35 @@
 
 容器启动后，数据库默认为空。请按以下顺序初始化数据：
 
-1.  **等待模型下载**：
-    * Compute 容器首次启动会自动下载 SigLIP 视觉模型（约 1GB+）。
-    * **注意**：视网络情况，API 可能在 **2-10 分钟** 内无法响应。请查看容器日志，确看到 `Application startup complete` 字样后再进行下一步。
-
-2.  **访问 Data UI 控制台**：
+1.  **访问 Data UI 控制台**：
     * 浏览器打开 `http://<Data容器IP>:8501`。
 
-3.  **执行初始化任务** (在 `Control` 页面依次点击)：
+2.  **执行初始化任务** (在 `Control` 页面依次点击)：
     1.  `[立即爬取 EH]`：获取增量 URL 队列。
     2.  `[导出 LRR]`：获取本地 LANraragi 的元数据。
     3.  `[文本入库]`：将来自LANraragi的元数据写入 PostgreSQL。
-    4.  `[向量入库 run_worker]`：**耗时操作**。开始调用 GPU/CPU 计算图片向量。注意删除下方的run_worker默认参数以进行全量入库
+    4.  `[向量入库 run_worker]`：**耗时操作**。开始调用 GPU/CPU 计算图片向量。注意删除下方的run_worker默认参数以进行全量入库。首次运行时容器会下载SigLIP 视觉模型（约 1GB+）权重，视网络情况可能需要等待2-10分钟，请查看容器日志以确定下载进度和权重加载情况
     5.  `[EH入库 run_eh_ingest]`: 调用EH API读取URL队列中的元数据，对符合筛选条件的（可在compute容器中的.env中设置）项目进行元数据和图片向量入库
     6.  设置Scheduler并保存自动任务，确保爬取和入库操作能自动执行
  > `[日常入库 run_daily]`为按顺序执行向量入库和EH入库，推荐设置Scheduler定时执行
 
 ## 4. 连接大脑 (n8n & Telegram)
 
-1.  **进入 n8n**：
-    * 浏览器打开 `http://<n8n容器IP>:5678`。
+1.  **配置 n8n https访问**：
+    * 访问n8n webui默认需要HTTPS协议，建议使用 Cloudflare Tunnel 或 Tailscale Funnel 将 n8n 端口暴露为 HTTPS。详细步骤请参考[n8n官方文档](https://docs.n8n.io/hosting/)
+2.  **进入 n8n**：
+    * 浏览器打开 `https://<n8n容器IP/telnet地址>:5678`。
 
-2.  **导入工作流**：
+3.  **导入工作流**：
     * 导入 `./Companion/n8nWorkflows/Main Agent.json` (主意图识别)。
     * 导入 `./Companion/n8nWorkflows/hunterAgent_sub.json` (工具调用)。
 
-3.  **鉴权配置**：
+4.  **鉴权配置**：
     * 在 n8n 中配置 `OpenAI Chat Model` 的 Credentials (指向你的 LLM 后端)。
     * 配置 `Telegram` 的 Bot Token。
 
-4.  **Webhook 注意事项**：
-    * **HTTPS 必须**：Telegram Bot API 要求 Webhook 回调地址必须是公网 HTTPS。
-    * **内网用户**：建议使用 Cloudflare Tunnel 或 Tailscale Funnel 将 n8n 端口暴露为 HTTPS，并在 n8n 的 Telegram 节点中填写该地址。
+5.  **Webhook 注意事项**：
+    * **HTTPS 必须**：Telegram Bot API 要求 Webhook 回调地址必须是公网 HTTPS，否则无法注册Webhook。
 
 ## 5. 可选步骤：构建完整数据闭环 (Optional)
 
