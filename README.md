@@ -5,9 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/) [![Architecture](https://img.shields.io/badge/Architecture-Split%20Plane-purple)](docs/ARCHITECTURE.md)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/placeholder-for-xp-map-image" width="800" alt="User Preference Manifold (XP Map)">
+  <img src="media/ico/AutoEhHunterLogo_256.png" width="256" alt="">
   <br>
-  <em>AutoEhHunter</em>
+  <em></em>
 </p>
 
 ## 💡 开发初衷 (Motivation)

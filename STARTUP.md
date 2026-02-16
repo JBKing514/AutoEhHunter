@@ -26,6 +26,7 @@
     重要变量分列如下：
     compute容器：Database，LANraragi，OpenAI-compatible endpoints必填，EH incremental ingest中的EH_COOKIE=建议填写，但不填也能调用EH API
     data容器： Database，Data UI，LANraragi必填，EH queue fetch中的EH_COOKIE=建议填写，但不填也能调用EH API
+    如果您有里站访问权限，填写COOKIE后可尝试将EH_BASE_URL替换为里站地址以获取里站结果
 
 
 ## 2. 选择部署模式 (三选一)
@@ -125,5 +126,30 @@
           - ./your_local_lrr_plugins:/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded
         ```
 
+## 6. 长期运行指南 (Long-term Operation Guide)
+
+为了保持数据的实时性与系统的稳定性，以下是基于长期实测的推荐配置参数与运维建议。
+
+### 🕷️ 爬虫策略 (Crawler)
+* **运行频率**：建议每 **10~30 分钟** 运行一次 `EH Fetch` 任务。
+* **页面深度**：在当前站点活跃度下更新速率约为**1本/分钟**，设置环境变量 `EH_FETCH_MAX_PAGES=8` 通常有较大余量（约覆盖 200 条/轮）。
+    * **监控指标**：如果在日志中连续观察到 `checkpoint_not_reached=true`，说明新内容的产生速度超过了抓取频率，请 **提高** `EH_FETCH_MAX_PAGES` 值或 **缩短** 运行间隔。
+* **网络隔离与风控**：
+    * 本项目的 `Data` 和 `Compute`容器由于需要访问EH API，如果您想最小化 IP 被 Ban 的风险，建议将两容器的网络堆栈通过 **Gluetun** 等 VPN 容器进行路由。
+
+### 🛡️ 稳定性建议
+* **Cookie 配置**：**强烈建议** 配置 `EH_COOKIE`。这不仅能解锁受限内容（ExHentai），还能显著提升抓取连接的稳定性与元数据解析的一致性。
+
+### ⚙️ 入库与算力规划 (Ingestion)
+* **运行频率**：建议每 **24 小时** 运行一次全量入库任务。
+    * 如果发现后台任务追不上新增进度，请适当缩短间隔。
+* **算力基准 (CPU vs GPU)**：
+    * **实测数据**：在 **AMD Ryzen 7 (H系列) 255** （8核16线程）纯 CPU 环境下测试：
+        * **SigLIP 封面向量化**：约 **2-3秒** / 张。
+        * **LRR 视觉向量入库** (封面 + 3张内页)：约 **10-20秒** / 本。
+    * **结论**：对于日常增量维护，**纯 CPU 运行已完全足够**，暂时没有强制使用 GPU 的必要。
+* **VL 模型策略**：
+    * 视觉语言模型的处理速度取决于推理 Token 生成速度。
+    * 由于入库是**离线异步**进行的，只要不是短时间内注入数千本新档案（大规模导入），每 24 小时运行一次完全足以“消化”当天的增量。请根据您的硬件条件量力配置模型参数。
 ---
 **现在，试着给你的 Bot 发一张图片，开始体验吧！**
