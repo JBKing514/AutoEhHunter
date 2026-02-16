@@ -1,13 +1,13 @@
-# AutoEhHunter (Project Alice)
+# AutoEhHunter
 
 ### 面向 E-Hentai 与 LANraragi 的私有化多模态 RAG 智能体
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/) [![Architecture](https://img.shields.io/badge/Architecture-Split%20Plane-purple)](docs/ARCHITECTURE.md)
 
 <p align="center">
-  <img src="media/ico/AutoEhHunterLogo_256.png" width="256" alt="">
+  <img src="media/ico/AutoEhHunterLogo_256.png" width="256" alt="AutoEhHunter_Ico">
   <br>
-  <em></em>
+  <em>Project Logo</em>
 </p>
 
 ## 💡 开发初衷 (Motivation)
@@ -29,7 +29,7 @@ AutoEhHunter 诞生于对现有 E-Hentai 和 LANraragi 搜索机制的深深沮�
 ## 🏗️ 系统架构 (Architecture)
 
 <p align="center">
-  <img src="AutoEhHunter_Diagram_ZH.png" width="800" alt="AutoEhHunter_Diagram_ZH">
+  <img src="/Media/diagram/AutoEhHunter_Diagram_ZH.png" width="800" alt="AutoEhHunter_Diagram_ZH">
   <br>
   <em>AutoEhHunter架构图</em>
 </p>
