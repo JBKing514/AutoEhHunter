@@ -15,18 +15,21 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import html
 import json
 import math
 import re
 import sys
 import time
 from pathlib import Path
+from urllib.parse import parse_qs, parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 
 
 GALLERY_RE = re.compile(r"/g/(\d+)/([0-9A-Za-z]+)/")
 ABS_GALLERY_RE = re.compile(r"https?://((?:e-hentai|exhentai)\.org)/g/(\d+)/([0-9A-Za-z]+)/")
+HREF_RE = re.compile(r"href=[\"']([^\"']+)[\"']", re.IGNORECASE)
 
 
 def _extract_host(base_url: str) -> str:
@@ -81,6 +84,46 @@ def _extract_gallery_urls(page_html: str, base_url: str) -> list[str]:
         out.append(f"https://{host}/g/{gid}/{token}/")
 
     return out
+
+
+def _sanitize_start_url(base_url: str) -> str:
+    s = (base_url or "").strip()
+    if not s:
+        s = "https://e-hentai.org/"
+    if not re.match(r"^https?://", s, flags=re.IGNORECASE):
+        s = "https://" + s
+
+    p = urlparse(s)
+    query_items = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True) if k.lower() != "page"]
+    query = urlencode(query_items, doseq=True)
+    path = p.path or "/"
+    return urlunparse((p.scheme, p.netloc, path, p.params, query, p.fragment))
+
+
+def _extract_next_listing_url(page_html: str, current_url: str, base_url: str) -> str | None:
+    base_host = _extract_host(base_url)
+
+    for m in HREF_RE.finditer(page_html):
+        href = html.unescape(m.group(1).strip())
+        if "next=" not in href:
+            continue
+
+        abs_url = urljoin(current_url, href)
+        p = urlparse(abs_url)
+        host = p.netloc.lower()
+        if host and host != base_host:
+            continue
+
+        qs = parse_qs(p.query)
+        nxt_vals = qs.get("next")
+        if not nxt_vals:
+            continue
+        nxt = (nxt_vals[0] or "").strip()
+        if not nxt:
+            continue
+        return abs_url
+
+    return None
 
 
 def _load_state(path: Path) -> dict:
@@ -149,8 +192,13 @@ def _sparse_sample(urls: list[str], density: float) -> list[str]:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Fetch new EH gallery URLs incrementally")
     ap.add_argument("--base-url", default="https://e-hentai.org", help="EH listing base URL")
-    ap.add_argument("--start-page", type=int, default=0, help="Listing page index to start from")
-    ap.add_argument("--max-pages", type=int, default=8, help="How many listing pages to crawl per run")
+    ap.add_argument(
+        "--start-page",
+        type=int,
+        default=0,
+        help="How many listing pages to skip from newest before collecting URLs",
+    )
+    ap.add_argument("--max-pages", type=int, default=8, help="How many listing pages to collect per run")
     ap.add_argument("--timeout", type=int, default=30, help="HTTP timeout seconds")
     ap.add_argument("--sleep-seconds", type=float, default=4.0, help="Sleep seconds between EH requests")
     ap.add_argument(
@@ -204,7 +252,6 @@ def main(argv: list[str]) -> int:
     discovered_new_keys: set[tuple[int, str]] = set()
     newest_seen: tuple[int, str] | None = None
     stop_reached = False
-    pages_crawled = 0
     sleep_s = max(0.0, float(args.sleep_seconds))
     max_run_s = max(0.0, float(args.max_run_minutes)) * 60.0
     started = time.monotonic()
@@ -228,27 +275,56 @@ def main(argv: list[str]) -> int:
     max_pages = int(args.max_pages)
     if max_pages <= 0:
         max_pages = 1_000_000
-    page_end = start_page + max_pages
+    page_index = 0
+    pages_crawled = 0
+    requests_made = 0
+    current_url = _sanitize_start_url(args.base_url)
+    seen_listing_urls: set[str] = set()
 
-    for page in range(start_page, page_end):
+    while current_url and pages_crawled < max_pages:
         elapsed = time.monotonic() - started
         if max_run_s > 0 and elapsed >= max_run_s:
             stop_reason = "max_run_minutes"
             break
 
-        if pages_crawled > 0 and sleep_s > 0:
+        if requests_made > 0 and sleep_s > 0:
             if max_run_s > 0 and (time.monotonic() - started + sleep_s) >= max_run_s:
                 stop_reason = "max_run_minutes"
                 break
             time.sleep(sleep_s)
 
-        url = f"{args.base_url.rstrip('/')}/?page={page}"
-        r = session.get(url, timeout=args.timeout)
+        r = session.get(current_url, timeout=args.timeout)
         r.raise_for_status()
+        requests_made += 1
+
+        next_url = _extract_next_listing_url(r.text, current_url=current_url, base_url=args.base_url)
+
+        # Honor start-page as an offset from newest listings.
+        if page_index < start_page:
+            page_index += 1
+            if not next_url:
+                stop_reason = "no_next"
+                break
+            if next_url in seen_listing_urls:
+                stop_reason = "pagination_loop"
+                break
+            seen_listing_urls.add(current_url)
+            current_url = next_url
+            continue
+
         pages_crawled += 1
 
         gallery_urls = _extract_gallery_urls(r.text, args.base_url)
         if not gallery_urls:
+            if not next_url:
+                stop_reason = "no_next"
+                break
+            if next_url in seen_listing_urls:
+                stop_reason = "pagination_loop"
+                break
+            seen_listing_urls.add(current_url)
+            current_url = next_url
+            page_index += 1
             continue
 
         for u in gallery_urls:
@@ -271,6 +347,17 @@ def main(argv: list[str]) -> int:
 
         if stop_reached:
             break
+
+        if not next_url:
+            stop_reason = "no_next"
+            break
+        if next_url in seen_listing_urls:
+            stop_reason = "pagination_loop"
+            break
+
+        seen_listing_urls.add(current_url)
+        current_url = next_url
+        page_index += 1
 
     sampled_new = _sparse_sample(discovered_new, density)
     if sampled_new:
