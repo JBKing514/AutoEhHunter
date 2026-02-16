@@ -1,4 +1,4 @@
-# 🤝 贡献指南 (Contribution Guide)
+# 贡献指南 (Contribution Guide)
 
 感谢您有兴趣为 **AutoEhHunter** 做出贡献！
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 🚧 提示词工程与本地化 (Prompt Engineering & Localization)
+## 提示词工程与本地化 (Prompt Engineering & Localization)
 
 目前的提示词库存在以下限制：
 
@@ -18,7 +18,7 @@
 
 ---
 
-## 📝 提示词参考库 (Prompt Registry)
+## 提示词参考库 (Prompt Registry)
 
 如果您想适配其他模型或语言，请参考以下核心 Prompt 的原始定义。具体人设可自由定义，但需要保持在各技能之间的一致性和指令遵循和稳定性。
 
@@ -107,7 +107,7 @@ system = (
 
 ---
 
-## ✅ 提交前的自测清单 (Checklist)
+## 提交前的自测清单 (Checklist)
 
 在提交 PR 之前，请确保您的 Prompt 修改满足以下条件：
 
@@ -115,6 +115,6 @@ system = (
     * 使用 `temperature=0` 对 `Intent Classifier` 进行至少 20 次测试。
     * 确保输出始终为有效的 JSON，且不包含 Markdown 格式标记。
 2.  **角色扮演一致性**：
-    * Alice 的语气应保持“专业中带着一丝毒舌”，避免过于谄媚或过于机械。
+    * Agent 的语气应保持“专业中带着一丝毒舌”，避免过于谄媚或过于机械。
 3.  **拒答率测试**：
     * 确保在涉及 NSFW 关键词（如 "Rape", "Lolicon"）时，模型不会触发拒绝回答或道德说教。

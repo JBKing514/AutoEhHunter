@@ -10,7 +10,7 @@
   <em>Project Logo</em>
 </p>
 
-## 💡 开发初衷 (Motivation)
+## 开发初衷 (Motivation)
 
 **“为什么我记得封面长什么样，记得剧情，却因为想不起那个该死的 Tag / 标题 而找不到那本书？”**
 
@@ -20,13 +20,13 @@ AutoEhHunter 诞生于对现有 E-Hentai 和 LANraragi 搜索机制的深深沮�
 
 我开发 **AutoEhHunter** 的初衷，就是为了打破这种认知的隔阂。我想构建一个不是让我去“搜 Tag”，而是能听懂我说“找点这种感觉的”或者“最近想看点重口的”系统。它不应该只是一个冷冰冰的归档工具，而应该是一个能理解画面、读懂剧情、甚至比我更懂我自己 XP 的**战术副官**。
 
-## 🌌 项目概览 (Overview)
+## 项目概览 (Overview)
 
 **AutoEhHunter** 是一个自主认知智能体，作为 **私有化 RAG (检索增强生成) 系统** 运行。它将您的本地库和外部 EH 数据库视为一个高维向量空间，利用 **SigLIP** 进行视觉理解，并配合 **LLM Agents** 进行语义推理，将被动的“浏览”转化为主动的、智能化的“战术交互”。
 
 > **"停止搜索。开始对齐。"**
 
-## 🏗️ 系统架构 (Architecture)
+## 系统架构 (Architecture)
 
 <p align="center">
   <img src="/Media/diagram/AutoEhHunter_Diagram_ZH.png" width="800" alt="AutoEhHunter_Diagram_ZH">
@@ -42,7 +42,7 @@ AutoEhHunter 诞生于对现有 E-Hentai 和 LANraragi 搜索机制的深深沮�
 | **算力面 (Cortex)** | **Compute** | 视觉嵌入 (SigLIP)、向量索引构建、XP 聚类分析。 | **PyTorch**, SigLIP, Scikit-learn，VL视觉模型 |
 | **数据面 (Logistics)** | **Data** | 漏斗爬虫、元数据清洗、持久化存储。 | **PostgreSQL** (pgvector), LANraragi |
 
-## 🧩 核心特性 (Core Features)
+## 核心特性 (Core Features)
 
 ### 1. 多模态语义检索
 * **视觉搜索**：上传一张图片，系统基于 SigLIP 寻找构图、画风或特征相似的作品。
@@ -70,7 +70,7 @@ AutoEhHunter 不仅仅是一个搜索器，更是一整套数据治理方案：
 * **叙事报告**：拒绝枯燥的 JSON。获取由“赛博副官”撰写的日报/周报，风格毒舌且切中要害。
 * **情境感知**：能够理解“帮我找某本特定的书”与“我无聊了，推点东西”之间的区别。
 
-## ⚙️ 容器规格与资源需求 (Requirements)
+## 容器规格与资源需求 (Requirements)
 
 本项目采用微服务设计，您可以根据硬件条件灵活部署。
 
@@ -90,7 +90,7 @@ AutoEhHunter 不仅仅是一个搜索器，更是一整套数据治理方案：
     * **特别提示**：对于 NVIDIA **RTX 50 系列 / Blackwell** 架构显卡，通常需要手动安装最新的 PyTorch Nightly 版本，并在环境变量中显式启用 GPU。
 * **镜像体积**：约 `8.0GB` (包含 PyTorch 与预训练模型)。
 
-## 🧠 模型架构与配置策略 (Model Architecture)
+## 模型架构与配置策略 (Model Architecture)
 
 AutoEhHunter 采用 **"专人专用" (Specialized Models)** 的策略来平衡性能与显存开销。虽然项目支持任意 OpenAI 兼容后端，但为了确保数据库 Schema 兼容性和最佳体验，请遵循以下配置规范。
 
@@ -126,7 +126,7 @@ AutoEhHunter 采用 **"专人专用" (Specialized Models)** 的策略来平衡�
   
 ---
 
-### 🚧 提示词工程与本地化 (Prompt Engineering & Localization)
+### 提示词工程与本地化 (Prompt Engineering & Localization)
 
 本项目的 Agent 核心逻辑（意图识别与叙事渲染）深度依赖于 **Prompt Engineering**。目前的提示词库存在以下限制：
 
@@ -136,7 +136,7 @@ AutoEhHunter 采用 **"专人专用" (Specialized Models)** 的策略来平衡�
     * 其他语言（英语、日语）的指令可能会被模型误解，或导致回复中出现中英夹杂的情况。
     * **n8n 硬编码**: n8n 工作流中的部分兜底回复（Fallback Responses）目前为简体中文硬编码，亟待本地化 (i18n) 改造。
 
-#### 🤝 贡献指南
+#### 贡献指南
 我们热烈欢迎社区贡献针对其他主流模型（如 `Llama-3.1-70B`, `DeepSeek-V3`）或多语言环境（English/Japanese）的 Prompt 适配方案。
 
 如果您有意提交 PR，请务必参考 [**CONTRIBUTING.md**](CONTRIBUTING.md) 中的 **[提示词示例]**。
@@ -144,16 +144,16 @@ AutoEhHunter 采用 **"专人专用" (Specialized Models)** 的策略来平衡�
 
 ---
 
-## 🚀 快速开始 (Getting Started)
+## 快速开始 (Getting Started)
 
 AutoEhHunter 专为 Docker 环境设计。
 
-* 👉 **[快速启动指南 (STARTUP.md)](STARTUP.md)** - *5分钟内部署您的私人 Agent*
-* 👉 **[data容器详细配置参考](Docker/data/README.md)** - *进阶容器说明*
-* 👉 **[compute容器详细配置参考](Docker/compute/README.md)** - *进阶容器说明*
+* **[快速启动指南 (STARTUP.md)](STARTUP.md)** - *5分钟内部署您的私人 Agent*
+* **[data容器详细配置参考](Docker/data/README.md)** - *进阶容器说明*
+* **[compute容器详细配置参考](Docker/compute/README.md)** - *进阶容器说明*
 * n8n，LANraragi，pgvector相关配置参考，请参考相关项目文档
 * 
-## 🛠️ 技术栈 (Technology Stack)
+## 技术栈 (Technology Stack)
 
 * **向量数据库**: PostgreSQL 17 + `pgvector`
 * **视觉模型**: Google `SigLIP-SO400M`, Qwen系列VL模型
@@ -161,13 +161,6 @@ AutoEhHunter 专为 Docker 环境设计。
 * **移动端**: Mihon (Android) + Custom LANraragi Plugin
 * **后端框架**: FastAPI (Python 3.10)，OpenAI兼容后端
 
-## ⚖️ 免责声明 (Disclaimer)
+## 免责声明 (Disclaimer)
 
 本工具仅供 **信息检索研究与个人归档** 使用。用户需对使用本软件访问、下载或存储的所有内容承担全部责任。请务必遵守您所访问的任何外部网站的服务条款 (ToS)。
-
----
-
-## 📧 联系与支持
-
-* **Issues**: 请使用 GitHub Issue Tracker 反馈 Bug。
-* **Discussion**: [GitHub Discussions]
