@@ -38,7 +38,6 @@
 
 1.  **修改配置**：打开项目根目录的 `docker-compose.aio.yml`。
     * 检查 `volumes` 映射路径。
-    * **关键**：确保 `data` 和 `compute` 容器映射了**同一个**宿主机目录到 `/app/runtime/eh_ingest_cache`。
 2.  **启动**：
     ```bash
     docker compose -f docker-compose.aio.yml up -d
@@ -56,18 +55,17 @@
 
 **2. Compute 端 (高性能 PC):**
 * 修改 `Docker/compute_docker-compose.yml`。
-* **关键**：需挂载与 Data 端共享的 `eh_ingest_cache` 目录（通过 SMB/NFS 或同步工具），否则无法读取爬下来的URL。
 * 启动：
     ```bash
     docker compose -f Docker/compute_docker-compose.yml up -d
     ```
 
-> **⚠️ 权限警告**：跨容器/跨机共享目录时，请确保宿主机上的 `eh_ingest_cache` 文件夹具有**读写权限**（建议 `chmod 777`），避免因权限不足导致 Compute 容器无法读取URL列表进行基于元数据的入库筛选和后续图片向量计算。
-
 ### 选项 C：手动部署
 *适用场景：无 Docker Compose 环境 (如部分 Unraid) 或需深度定制。*
 
 请参考 `Docker/compute/README.md` 和 `Docker/data/README.md` 中的 `docker run` 命令手动逐个拉起容器。
+
+> 注：当前版本默认通过 PostgreSQL `eh_queue` 传递 EH URL，通常不需要手动配置共享目录或额外初始化 schema。请确保 5 个容器（`pg17`、`lanraragi`、`n8n`、`data`、`compute`）网络互相可见，且都能连上 pgvector；否则 WebUI 的手动触发、定时任务、EH URL 抓取与入库可能不生效。
 
 ## 3. 首次初始化 (关键步骤)
 

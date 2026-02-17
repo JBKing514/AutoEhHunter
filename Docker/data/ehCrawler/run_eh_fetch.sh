@@ -34,6 +34,7 @@ EH_USER_AGENT=${EH_USER_AGENT:-AutoEhHunter/1.0}
 EH_STATE_FILE=${EH_STATE_FILE:-"${SCRIPT_DIR}/cache/eh_incremental_state.json"}
 EH_QUEUE_FILE=${EH_QUEUE_FILE:-"${SCRIPT_DIR}/eh_gallery_queue.txt"}
 EH_RESET_STATE=${EH_RESET_STATE:-0}
+POSTGRES_DSN=${POSTGRES_DSN:-${DSN:-${PG_DSN:-}}}
 
 usage() {
   cat >&2 <<'EOF'
@@ -50,8 +51,9 @@ Environment variables:
   EH_COOKIE                 Optional cookie header
   EH_USER_AGENT             Default: AutoEhHunter/1.0
   EH_STATE_FILE             Default: ./cache/eh_incremental_state.json
-  EH_QUEUE_FILE             Default: ./eh_gallery_queue.txt
+  EH_QUEUE_FILE             [deprecated] legacy queue file path
   EH_RESET_STATE            Default: 0
+  POSTGRES_DSN              PostgreSQL DSN (required, writes queue into eh_queue)
 EOF
 }
 
@@ -77,9 +79,15 @@ echo "== EH fetch run ==" >&2
 echo "time:      $(date -Is)" >&2
 echo "python:    $VENV_PY" >&2
 echo "base_url:  $EH_BASE_URL" >&2
-echo "queue:     $EH_QUEUE_FILE" >&2
+echo "queue:     pg.eh_queue" >&2
+
+if [[ -z "$POSTGRES_DSN" ]]; then
+  echo "ERROR: POSTGRES_DSN is required for EH fetch." >&2
+  exit 2
+fi
 
 FETCH_ARGS=(
+  --dsn "$POSTGRES_DSN"
   --base-url "$EH_BASE_URL"
   --start-page "$EH_FETCH_START_PAGE"
   --max-pages "$EH_FETCH_MAX_PAGES"
@@ -89,7 +97,6 @@ FETCH_ARGS=(
   --max-run-minutes "$EH_FETCH_MAX_RUN_MINUTES"
   --user-agent "$EH_USER_AGENT"
   --state-file "$EH_STATE_FILE"
-  --queue-file "$EH_QUEUE_FILE"
 )
 
 if [[ -n "$EH_COOKIE" ]]; then

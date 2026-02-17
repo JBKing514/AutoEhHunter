@@ -52,7 +52,7 @@ docker compose -f compute_docker-compose.yml run --rm compute worker --limit 20 
 Ingest EH metadata from queue:
 
 ```bash
-docker compose -f compute_docker-compose.yml run --rm compute eh-ingest --queue-file /app/runtime/eh_gallery_queue.txt
+docker compose -f compute_docker-compose.yml run --rm compute eh-ingest --queue-table eh_queue
 ```
 
 Open shell:

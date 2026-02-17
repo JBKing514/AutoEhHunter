@@ -54,7 +54,6 @@ services:
     command: ["help"]
     volumes:
       - ./Docker/data/runtime:/app/runtime
-      - ./Docker/shared/eh_ingest_cache:/app/runtime/eh_ingest_cache
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     depends_on:
@@ -74,7 +73,6 @@ services:
       - "8501:8501"
     volumes:
       - ./Docker/data/runtime:/app/runtime
-      - ./Docker/shared/eh_ingest_cache:/app/runtime/eh_ingest_cache
     restart: unless-stopped
     depends_on:
       pg17:
@@ -94,7 +92,6 @@ services:
     volumes:
       - ./Docker/compute/runtime:/app/runtime
       - ./Docker/compute/hf_cache:/root/.cache/huggingface
-      - ./Docker/shared/eh_ingest_cache:/app/runtime/eh_ingest_cache
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18080/health"]

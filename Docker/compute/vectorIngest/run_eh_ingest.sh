@@ -4,7 +4,7 @@ set -euo pipefail
 # Ingest queued EH gallery URLs via EH API + cover embedding into Postgres.
 #
 # This script does not source .env files and does not run URL fetch.
-# It only consumes an existing queue file produced by the data plane.
+# It consumes pending URLs from PostgreSQL table `eh_queue` by default.
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
@@ -24,7 +24,9 @@ _as_bool() {
 
 # Ingest config
 POSTGRES_DSN=${POSTGRES_DSN:-${DSN:-${PG_DSN:-}}}
-EH_QUEUE_FILE=${EH_QUEUE_FILE:-"${SCRIPT_DIR}/eh_gallery_queue.txt"}
+EH_QUEUE_TABLE=${EH_QUEUE_TABLE:-eh_queue}
+EH_QUEUE_LIMIT=${EH_QUEUE_LIMIT:-2000}
+EH_QUEUE_FILE=${EH_QUEUE_FILE:-}
 EH_API_URL=${EH_API_URL:-https://api.e-hentai.org/api.php}
 EH_INGEST_TIMEOUT=${EH_INGEST_TIMEOUT:-45}
 EH_API_BATCH_SIZE=${EH_API_BATCH_SIZE:-25}
@@ -48,12 +50,14 @@ EH_FILTER_TAG=${EH_FILTER_TAG:-}
 
 usage() {
   cat >&2 <<'EOF'
-Usage: run_eh_ingest.sh [--dry-run] [--init-schema] [--queue-file PATH] [--dsn DSN]
+Usage: run_eh_ingest.sh [--dry-run] [--init-schema] [--queue-table NAME] [--dsn DSN]
 
 Environment variables:
   POSTGRES_DSN                 PostgreSQL DSN (required)
   DSN / PG_DSN                 Backward-compatible aliases for POSTGRES_DSN
-  EH_QUEUE_FILE                Queue file path
+  EH_QUEUE_TABLE               Queue table name (default: eh_queue)
+  EH_QUEUE_LIMIT               Max pending rows dequeued per run (default: 2000)
+  EH_QUEUE_FILE                [deprecated] file queue fallback path
   EH_API_URL                   Default: https://api.e-hentai.org/api.php
   EH_INGEST_TIMEOUT            Default: 45
   EH_API_BATCH_SIZE            Default: 25
@@ -89,6 +93,14 @@ while (( "$#" )); do
       EH_INIT_SCHEMA=1
       shift
       ;;
+    --queue-table)
+      EH_QUEUE_TABLE=${2:-}
+      shift 2
+      ;;
+    --queue-limit)
+      EH_QUEUE_LIMIT=${2:-}
+      shift 2
+      ;;
     --queue-file)
       EH_QUEUE_FILE=${2:-}
       shift 2
@@ -114,11 +126,6 @@ if [[ -z "$POSTGRES_DSN" ]]; then
   exit 2
 fi
 
-if [[ ! -s "$EH_QUEUE_FILE" ]]; then
-  echo "No queued EH URLs found, skip ingest." >&2
-  exit 0
-fi
-
 if _as_bool "$EH_INIT_SCHEMA" && [[ -z "$EH_SCHEMA_PATH" ]]; then
   echo "ERROR: EH_SCHEMA_PATH is required when --init-schema is enabled." >&2
   exit 2
@@ -127,14 +134,16 @@ fi
 echo "== EH ingest run ==" >&2
 echo "time:      $(date -Is)" >&2
 echo "python:    $VENV_PY" >&2
-echo "queue:     $EH_QUEUE_FILE" >&2
+echo "queue_table: $EH_QUEUE_TABLE" >&2
+echo "queue_limit: $EH_QUEUE_LIMIT" >&2
 echo "dry_run:   $EH_DRY_RUN" >&2
 echo "init_schema: $EH_INIT_SCHEMA" >&2
 
 INGEST_ARGS=(
   --dsn "$POSTGRES_DSN"
   --api-url "$EH_API_URL"
-  --queue-file "$EH_QUEUE_FILE"
+  --queue-table "$EH_QUEUE_TABLE"
+  --queue-limit "$EH_QUEUE_LIMIT"
   --api-batch-size "$EH_API_BATCH_SIZE"
   --timeout "$EH_INGEST_TIMEOUT"
   --sleep-seconds "$EH_REQUEST_SLEEP"
@@ -145,6 +154,10 @@ INGEST_ARGS=(
   --translation-cache "$EH_TRANSLATION_CACHE"
   --translation-max-age-hours "$EH_TRANSLATION_MAX_AGE_HOURS"
 )
+
+if [[ -n "$EH_QUEUE_FILE" ]]; then
+  INGEST_ARGS+=(--queue-file "$EH_QUEUE_FILE")
+fi
 
 if [[ -n "$EH_COOKIE" ]]; then
   INGEST_ARGS+=(--cookie "$EH_COOKIE")

@@ -117,4 +117,24 @@ CREATE INDEX IF NOT EXISTS idx_eh_works_tags_gin ON eh_works USING gin (tags);
 CREATE INDEX IF NOT EXISTS idx_eh_works_tags_translated_gin ON eh_works USING gin (tags_translated);
 CREATE INDEX IF NOT EXISTS idx_eh_works_cover_vec_l2 ON eh_works USING hnsw (cover_embedding vector_l2_ops);
 
+-- Incremental EH fetch queue (cross-service safe, no shared txt file needed).
+CREATE TABLE IF NOT EXISTS eh_queue (
+    id            bigserial PRIMARY KEY,
+    gid           bigint NOT NULL,
+    token         text NOT NULL,
+    eh_url        text NOT NULL,
+    status        text NOT NULL DEFAULT 'pending',
+    result        text,
+    attempts      integer NOT NULL DEFAULT 0,
+    last_error    text,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+    locked_at     timestamptz,
+    completed_at  timestamptz,
+    UNIQUE (gid, token)
+);
+
+CREATE INDEX IF NOT EXISTS idx_eh_queue_status_created ON eh_queue (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_eh_queue_gid_token ON eh_queue (gid, token);
+
 COMMIT;

@@ -7,8 +7,7 @@ Workflow:
 - Append only new URLs into queue file (deduplicated)
 - Update checkpoint to the newest gallery seen in this run
 
-This script is designed to work with:
-  ingest_eh_metadata_to_pg.py --queue-file <same_queue_file>
+This script writes pending URLs into PostgreSQL table `eh_queue`.
 """
 
 from __future__ import annotations
@@ -143,28 +142,36 @@ def _save_state(path: Path, state: dict) -> None:
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _load_existing_queue_keys(path: Path) -> set[tuple[int, str]]:
-    keys: set[tuple[int, str]] = set()
-    if not path.exists():
-        return keys
-    for line in path.read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        try:
-            gid, token, _ = _parse_gallery_url(s)
-            keys.add((gid, token))
-        except Exception:
-            continue
-    return keys
+def _enqueue_urls_to_db(dsn: str, urls: list[str]) -> int:
+    if not urls:
+        return 0
+    try:
+        import importlib
 
+        psycopg = importlib.import_module("psycopg")
+    except Exception as e:
+        raise RuntimeError('Missing dependency psycopg. Install with: pip install "psycopg[binary]"') from e
 
-def _append_queue(path: Path, urls: list[str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        for u in urls:
-            f.write(u)
-            f.write("\n")
+    rows: list[tuple[int, str, str]] = []
+    for u in urls:
+        gid, token, normalized = _parse_gallery_url(u)
+        rows.append((gid, token, normalized))
+
+    sql = (
+        "INSERT INTO eh_queue (gid, token, eh_url, status, updated_at) "
+        "VALUES (%s, %s, %s, 'pending', now()) "
+        "ON CONFLICT (gid, token) DO NOTHING"
+    )
+
+    inserted = 0
+    with psycopg.connect(dsn) as conn:
+        with conn.cursor() as cur:
+            for row in rows:
+                cur.execute(sql, row)
+                if (cur.rowcount or 0) > 0:
+                    inserted += 1
+        conn.commit()
+    return inserted
 
 
 def _sparse_sample(urls: list[str], density: float) -> list[str]:
@@ -200,6 +207,7 @@ def main(argv: list[str]) -> int:
     )
     ap.add_argument("--max-pages", type=int, default=8, help="How many listing pages to collect per run")
     ap.add_argument("--timeout", type=int, default=30, help="HTTP timeout seconds")
+    ap.add_argument("--dsn", required=True, help="PostgreSQL DSN (used to write eh_queue)")
     ap.add_argument("--sleep-seconds", type=float, default=4.0, help="Sleep seconds between EH requests")
     ap.add_argument(
         "--max-run-minutes",
@@ -223,7 +231,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--queue-file",
         default=str(Path(__file__).resolve().parent / "eh_gallery_queue.txt"),
-        help="Queue file path (one gallery URL per line)",
+        help="[deprecated] legacy queue file path (unused when DB queue is enabled)",
     )
     ap.add_argument("--reset-state", action="store_true", help="Ignore previous checkpoint and fetch all pages this run")
     args = ap.parse_args(argv)
@@ -231,8 +239,6 @@ def main(argv: list[str]) -> int:
     density = max(0.0, min(1.0, float(args.sampling_density)))
 
     state_path = Path(args.state_file)
-    queue_path = Path(args.queue_file)
-
     state = {} if args.reset_state else _load_state(state_path)
     checkpoint_gid = state.get("last_seen_gid")
     checkpoint_token = state.get("last_seen_token")
@@ -240,8 +246,6 @@ def main(argv: list[str]) -> int:
         checkpoint_gid = None
     if not isinstance(checkpoint_token, str):
         checkpoint_token = None
-
-    existing_keys = _load_existing_queue_keys(queue_path)
 
     session = requests.Session()
     session.headers.update({"User-Agent": args.user_agent})
@@ -339,7 +343,7 @@ def main(argv: list[str]) -> int:
                 stop_reason = "checkpoint"
                 break
 
-            if key in existing_keys or key in discovered_new_keys:
+            if key in discovered_new_keys:
                 continue
 
             discovered_new_keys.add(key)
@@ -360,8 +364,9 @@ def main(argv: list[str]) -> int:
         page_index += 1
 
     sampled_new = _sparse_sample(discovered_new, density)
+    inserted = 0
     if sampled_new:
-        _append_queue(queue_path, sampled_new)
+        inserted = _enqueue_urls_to_db(args.dsn, sampled_new)
 
     now = dt.datetime.now(tz=dt.timezone.utc).isoformat()
     checkpoint_advanced = False
@@ -385,7 +390,7 @@ def main(argv: list[str]) -> int:
     print(
         f"Done. new_urls={len(discovered_new)} sampled_urls={len(sampled_new)} density={density:.3f} "
         f"pages_crawled={pages_crawled} checkpoint_reached={stop_reached} "
-        f"checkpoint_advanced={checkpoint_advanced} stop_reason={stop_reason} queue_file={queue_path}",
+        f"checkpoint_advanced={checkpoint_advanced} stop_reason={stop_reason} enqueued={inserted}",
         file=sys.stderr,
     )
     return 0

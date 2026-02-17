@@ -10,7 +10,6 @@ services:
     command: ["help"]
     volumes:
       - ./data/runtime:/app/runtime
-      - ./data/eh_ingest_cache:/app/runtime/eh_ingest_cache
     restart: "no"
 
   data-ui:
@@ -26,6 +25,5 @@ services:
       - "8501:8501"
     volumes:
       - ./data/runtime:/app/runtime
-      - ./data/eh_ingest_cache:/app/runtime/eh_ingest_cache
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped

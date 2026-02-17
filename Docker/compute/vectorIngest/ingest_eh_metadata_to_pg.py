@@ -23,6 +23,7 @@ import json
 import re
 import sys
 import time
+import os
 from io import BytesIO
 from pathlib import Path
 from typing import Any, TypeVar
@@ -67,6 +68,136 @@ def _iter_gallery_urls(args: argparse.Namespace) -> list[str]:
         seen.add(u)
         dedup.append(u)
     return dedup
+
+
+def _validate_simple_ident(name: str, default: str = "eh_queue") -> str:
+    s = (name or "").strip()
+    if not s:
+        s = default
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", s):
+        raise RuntimeError(f"Invalid table identifier: {name}")
+    return s
+
+
+def _dequeue_pending_urls(dsn: str, table: str, limit: int) -> list[str]:
+    table = _validate_simple_ident(table)
+    limit = max(1, int(limit))
+    sql = (
+        f"WITH picked AS ("
+        f"  SELECT id, eh_url FROM {table} "
+        f"  WHERE status = 'pending' "
+        f"     OR (status = 'in_progress' AND locked_at IS NOT NULL AND locked_at < now() - interval '30 minutes') "
+        f"  ORDER BY id "
+        f"  LIMIT %s "
+        f"  FOR UPDATE SKIP LOCKED"
+        f") "
+        f"UPDATE {table} q "
+        f"SET status = 'in_progress', updated_at = now(), locked_at = now(), attempts = q.attempts + 1 "
+        f"FROM picked p "
+        f"WHERE q.id = p.id "
+        f"RETURNING p.eh_url"
+    )
+    try:
+        import importlib
+
+        psycopg = importlib.import_module("psycopg")
+    except Exception as e:
+        raise RuntimeError('Missing dependency psycopg. Install with: pip install "psycopg[binary]"') from e
+
+    out: list[str] = []
+    with psycopg.connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (limit,))
+            rows = cur.fetchall()
+            out = [str(r[0]).strip() for r in rows if r and str(r[0]).strip()]
+        conn.commit()
+    return out
+
+
+def _complete_queue_rows(dsn: str, table: str, keys: set[tuple[int, str]], result: str) -> int:
+    if not keys:
+        return 0
+    table = _validate_simple_ident(table)
+    vals = list(keys)
+    sql = (
+        f"UPDATE {table} q "
+        f"SET status = 'complete', result = %s, completed_at = now(), updated_at = now() "
+        f"WHERE EXISTS ("
+        f"  SELECT 1 FROM (VALUES "
+        + ",".join(["(%s,%s)"] * len(vals))
+        + f") AS v(gid, token) "
+        f"  WHERE q.gid = v.gid AND q.token = v.token"
+        f")"
+    )
+    params: list[Any] = [result]
+    for gid, token in vals:
+        params.extend([gid, token])
+
+    try:
+        import importlib
+
+        psycopg = importlib.import_module("psycopg")
+    except Exception as e:
+        raise RuntimeError('Missing dependency psycopg. Install with: pip install "psycopg[binary]"') from e
+
+    with psycopg.connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            updated = int(cur.rowcount or 0)
+        conn.commit()
+    return updated
+
+
+def _set_queue_rows_pending(dsn: str, table: str, keys: set[tuple[int, str]]) -> int:
+    if not keys:
+        return 0
+    table = _validate_simple_ident(table)
+    vals = list(keys)
+    sql = (
+        f"UPDATE {table} q "
+        f"SET status = 'pending', result = NULL, updated_at = now(), locked_at = NULL "
+        f"WHERE EXISTS ("
+        f"  SELECT 1 FROM (VALUES "
+        + ",".join(["(%s,%s)"] * len(vals))
+        + f") AS v(gid, token) "
+        f"  WHERE q.gid = v.gid AND q.token = v.token"
+        f")"
+    )
+    params: list[Any] = []
+    for gid, token in vals:
+        params.extend([gid, token])
+
+    try:
+        import importlib
+
+        psycopg = importlib.import_module("psycopg")
+    except Exception as e:
+        raise RuntimeError('Missing dependency psycopg. Install with: pip install "psycopg[binary]"') from e
+
+    with psycopg.connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            updated = int(cur.rowcount or 0)
+        conn.commit()
+    return updated
+
+
+def _cleanup_completed_queue_rows(dsn: str, table: str) -> int:
+    table = _validate_simple_ident(table)
+    sql = f"DELETE FROM {table} WHERE status = 'complete'"
+    try:
+        import importlib
+
+        psycopg = importlib.import_module("psycopg")
+    except Exception as e:
+        raise RuntimeError('Missing dependency psycopg. Install with: pip install "psycopg[binary]"') from e
+
+    with psycopg.connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            removed = int(cur.rowcount or 0)
+        conn.commit()
+    return removed
 
 
 def _remove_ingested_urls_from_queue(queue_file: Path, succeeded_keys: set[tuple[int, str]]) -> int:
@@ -424,11 +555,13 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--api-url", default=DEFAULT_API_URL, help="EH API URL")
     ap.add_argument("--gallery-url", action="append", help="EH gallery URL (repeatable)")
     ap.add_argument("--gallery-file", help="Text file containing gallery URLs (one per line)")
+    ap.add_argument("--queue-table", default=os.getenv("EH_QUEUE_TABLE", "eh_queue"), help="PostgreSQL queue table (default: eh_queue)")
+    ap.add_argument("--queue-limit", type=int, default=int(os.getenv("EH_QUEUE_LIMIT", "2000")), help="Max pending URLs to dequeue per run")
     ap.add_argument(
         "--queue-file",
         help=(
-            "Queue file path for incremental ingestion. "
-            "After successful DB upsert, ingested URLs are removed from this file."
+            "[deprecated] Queue file path for incremental ingestion. "
+            "Prefer --queue-table."
         ),
     )
     ap.add_argument("--api-batch-size", type=int, default=25, help="EH API gidlist batch size")
@@ -493,13 +626,18 @@ def main(argv: list[str]) -> int:
         args.gallery_file = args.queue_file
 
     urls = _iter_gallery_urls(args)
+    used_queue_table = False
     if not urls:
-        print("No gallery URLs provided. Use --gallery-url or --gallery-file.", file=sys.stderr)
+        urls = _dequeue_pending_urls(args.dsn, args.queue_table, args.queue_limit)
+        used_queue_table = True
+    if not urls:
+        print("No gallery URLs provided. Queue table has no pending rows.", file=sys.stderr)
         return 2
 
     parsed_urls: list[tuple[int, str, str]] = []
     for u in urls:
         parsed_urls.append(_parse_gallery_url(u))
+    dequeued_keys: set[tuple[int, str]] = {(gid, token) for gid, token, _ in parsed_urls}
 
     # Keep first URL for each (gid, token) pair.
     url_map: dict[tuple[int, str], str] = {}
@@ -636,6 +774,9 @@ def main(argv: list[str]) -> int:
 
     if args.dry_run:
         print("Dry run enabled: no DB writes.", file=sys.stderr)
+        if used_queue_table and dequeued_keys:
+            reset = _set_queue_rows_pending(args.dsn, args.queue_table, dequeued_keys)
+            print(f"Queue reset(db): pending={reset}, table={args.queue_table}", file=sys.stderr)
         return 0
 
     try:
@@ -687,11 +828,22 @@ def main(argv: list[str]) -> int:
                 cur.executemany(upsert_sql, rows_to_upsert)
             conn.commit()
 
-    if args.queue_file:
+    if used_queue_table:
+        ingested_done = _complete_queue_rows(args.dsn, args.queue_table, succeeded_keys, "ingested")
+        filtered_done = _complete_queue_rows(args.dsn, args.queue_table, filtered_keys, "filtered")
+        other_keys = dequeued_keys - succeeded_keys - filtered_keys
+        other_done = _complete_queue_rows(args.dsn, args.queue_table, other_keys, "skipped")
+        removed = _cleanup_completed_queue_rows(args.dsn, args.queue_table)
+        print(
+            f"Queue cleanup(db): completed_ingested={ingested_done}, completed_filtered={filtered_done}, completed_skipped={other_done}, "
+            f"deleted_complete={removed}, table={args.queue_table}",
+            file=sys.stderr,
+        )
+    elif args.queue_file:
         cleanup_keys = succeeded_keys | filtered_keys
         removed = _remove_ingested_urls_from_queue(Path(args.queue_file), cleanup_keys)
         print(
-            f"Queue cleanup: removed={removed} from {args.queue_file} "
+            f"Queue cleanup(file): removed={removed} from {args.queue_file} "
             f"(ingested={len(succeeded_keys)}, filtered={len(filtered_keys)})",
             file=sys.stderr,
         )

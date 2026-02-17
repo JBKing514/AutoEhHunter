@@ -17,7 +17,7 @@ Commands:
 Examples:
   entrypoint.sh agent
   entrypoint.sh worker --limit 20 --only-missing
-  entrypoint.sh eh-ingest --queue-file /app/runtime/eh_gallery_queue.txt
+  entrypoint.sh eh-ingest --queue-table eh_queue
 EOF
 }
 

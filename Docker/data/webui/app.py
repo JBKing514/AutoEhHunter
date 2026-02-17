@@ -25,6 +25,7 @@ SCHEDULE_FILE = RUNTIME_DIR / "schedule.json"
 RUN_HISTORY_FILE = RUNTIME_DIR / "run_history.jsonl"
 TASK_LOG_DIR = RUNTIME_DIR / "task_logs"
 LOGO_PATH = Path(__file__).resolve().parent / "ico" / "AutoEhHunterLogo_128.png"
+I18N_DIR = Path(__file__).resolve().parent / "i18n"
 
 DEFAULT_SCHEDULE = {
     "eh_fetch": {"enabled": False, "interval_minutes": 30},
@@ -33,114 +34,22 @@ DEFAULT_SCHEDULE = {
     "compute_daily": {"enabled": False, "interval_minutes": 60},
 }
 
-# Android string resource-like mapping.
+def _load_i18n(lang: str) -> dict[str, str]:
+    p = I18N_DIR / f"{lang}.json"
+    if not p.exists():
+        return {}
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(obj, dict):
+            return {str(k): str(v) for k, v in obj.items()}
+    except Exception:
+        return {}
+    return {}
+
+
 STRINGS = {
-    "zh": {
-        "app.title": "AutoEhHunter Data UI",
-        "tab.dashboard": "仪表盘",
-        "tab.control": "控制台",
-        "tab.audit": "审计",
-        "tab.xp_map": "XP 地形图",
-        "lang.label": "语言",
-        "lang.current": "🌐 {lang}",
-        "dashboard.title": "仪表盘",
-        "dashboard.metric.works": "库内本子数(works)",
-        "dashboard.metric.eh_works": "EH 元数据数(eh_works)",
-        "dashboard.metric.last_fetch": "最近 EH 抓取",
-        "dashboard.health": "系统健康",
-        "health.lrr": "LANraragi服务",
-        "health.compute": "Compute容器",
-        "health.llm": "大模型服务",
-        "health.llm.na": "请设置 OPENAI_HEALTH_URL 环境变量",
-        "control.title": "控制台",
-        "control.manual": "手动触发",
-        "control.btn.eh_fetch": "立即爬取 EH URL",
-        "control.btn.lrr_export": "导出LRR数据库",
-        "control.btn.text_ingest": "LRR元数据入库",
-        "control.manual.compute": "手动触发（Compute）",
-        "control.caption.compute": "以下命令需要 data-ui 容器可访问 Docker Socket，并且 compute 容器名正确。",
-        "control.worker.args": "run_worker 参数",
-        "control.worker.args.help": "会直接追加到 run_worker.sh 后",
-        "control.btn.compute_worker": "LRR视觉向量入库",
-        "control.btn.compute_eh_ingest": "EH 入库",
-        "control.btn.compute_daily": "EH+LRR视觉向量入库",
-        "control.scheduler": "计划任务",
-        "control.scheduler.enable": "启用 {label}",
-        "control.scheduler.interval": "间隔(分钟) {label}",
-        "control.scheduler.save": "保存定时配置",
-        "control.scheduler.saved": "已保存并应用定时任务。",
-        "scheduler.eh_fetch": "EH爬取",
-        "scheduler.lrr_export": "LRR数据库导出",
-        "scheduler.text_ingest": "LRR元数据入库",
-        "scheduler.compute_daily": "EH+LRR视觉向量入库",
-        "audit.title": "审计",
-        "audit.history": "最近任务记录",
-        "audit.no_history": "暂无任务记录。",
-        "audit.logs": "日志预览",
-        "audit.select_log": "选择日志文件",
-        "xp.title": "XP 地形图",
-        "xp.days": "统计窗口(天)",
-        "xp.k": "聚类数",
-        "xp.no_data": "暂无足够阅读记录用于聚类。",
-        "xp.no_tags": "可用于聚类的标签文本不足。",
-        "xp.chart_title": "XP 聚类 (PCA 2D)",
-        "status.up": "UP",
-        "status.down": "DOWN",
-        "status.na": "N/A",
-    },
-    "en": {
-        "app.title": "AutoEhHunter Data UI",
-        "tab.dashboard": "Dashboard",
-        "tab.control": "Control",
-        "tab.audit": "Audit",
-        "tab.xp_map": "Preference Map",
-        "lang.label": "Language",
-        "lang.current": "🌐 {lang}",
-        "dashboard.title": "Dashboard",
-        "dashboard.metric.works": "Library Works (works)",
-        "dashboard.metric.eh_works": "EH Metadata (eh_works)",
-        "dashboard.metric.last_fetch": "Last EH Fetch",
-        "dashboard.health": "System Health",
-        "health.lrr": "LANraragi",
-        "health.compute": "Compute",
-        "health.llm": "LLM Service",
-        "health.llm.na": "Set OPENAI_HEALTH_URL",
-        "control.title": "Control",
-        "control.manual": "Manual Trigger",
-        "control.btn.eh_fetch": "Fetch EH URLs Now",
-        "control.btn.lrr_export": "Export LRR Metadata",
-        "control.btn.text_ingest": "Ingest LRR Text Data",
-        "control.manual.compute": "Manual Trigger (Compute)",
-        "control.caption.compute": "Docker socket access is required in data-ui and compute container name must be correct.",
-        "control.worker.args": "run_worker args",
-        "control.worker.args.help": "Appended directly to run_worker.sh",
-        "control.btn.compute_worker": "Run run_worker",
-        "control.btn.compute_eh_ingest": "Run run_eh_ingest",
-        "control.btn.compute_daily": "Run run_daily",
-        "control.scheduler": "Scheduler",
-        "control.scheduler.enable": "Enable {label}",
-        "control.scheduler.interval": "Interval (minutes) {label}",
-        "control.scheduler.save": "Save Scheduler Config",
-        "control.scheduler.saved": "Scheduler config saved and applied.",
-        "scheduler.eh_fetch": "EH Fetch",
-        "scheduler.lrr_export": "LRR Export",
-        "scheduler.text_ingest": "Text Ingest",
-        "scheduler.compute_daily": "Compute run_daily",
-        "audit.title": "Audit",
-        "audit.history": "Recent Task History",
-        "audit.no_history": "No task history yet.",
-        "audit.logs": "Log Preview",
-        "audit.select_log": "Select Log File",
-        "xp.title": "Preference Map",
-        "xp.days": "Time Window (days)",
-        "xp.k": "Cluster Count",
-        "xp.no_data": "Not enough reading data for clustering.",
-        "xp.no_tags": "Not enough tag text for clustering.",
-        "xp.chart_title": "Preference Clusters (PCA 2D)",
-        "status.up": "UP",
-        "status.down": "DOWN",
-        "status.na": "N/A",
-    },
+    "zh": _load_i18n("zh"),
+    "en": _load_i18n("en"),
 }
 
 
