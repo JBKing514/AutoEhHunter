@@ -17,6 +17,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import base64
 import datetime as dt
 import html
 import json
@@ -37,6 +38,74 @@ DEFAULT_TRANSLATION_URL = (
 )
 DEFAULT_API_URL = "https://api.e-hentai.org/api.php"
 GALLERY_RE = re.compile(r"https?://((?:e-hentai|exhentai)\.org)/g/(\d+)/([0-9A-Za-z]+)/?")
+
+
+def _get_config_cipher_key() -> bytes | None:
+    key_env = os.getenv("DATA_UI_CONFIG_CRYPT_KEY", "").strip()
+    if key_env:
+        if len(key_env) == 44 and key_env.endswith("="):
+            return key_env.encode("ascii")
+        return base64.urlsafe_b64encode(key_env.encode("utf-8")[:32].ljust(32, b"0"))
+
+    candidates = [Path("/app/runtime/webui/.app_config.key"), Path("/app/runtime/.app_config.key")]
+    for p in candidates:
+        if p.exists():
+            try:
+                return p.read_bytes().strip()
+            except Exception:
+                continue
+    return None
+
+
+def _decrypt_secret_if_needed(value: str) -> str:
+    s = str(value or "").strip()
+    if not s.startswith("enc:v1:"):
+        return s
+    key = _get_config_cipher_key()
+    if not key:
+        return ""
+    try:
+        from cryptography.fernet import Fernet
+
+        token = s[len("enc:v1:") :]
+        return Fernet(key).decrypt(token.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return ""
+
+
+def _load_runtime_config_from_db(dsn: str) -> dict[str, str]:
+    s = str(dsn or "").strip()
+    if not s:
+        return {}
+    try:
+        import importlib
+
+        psycopg = importlib.import_module("psycopg")
+    except Exception:
+        return {}
+
+    out: dict[str, str] = {}
+    sql = "SELECT key, value, is_secret FROM app_config WHERE scope = %s"
+    try:
+        with psycopg.connect(s) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, ("global",))
+                for key, value, is_secret in cur.fetchall():
+                    k = str(key)
+                    v = str(value or "")
+                    out[k] = _decrypt_secret_if_needed(v) if bool(is_secret) else v
+    except Exception:
+        return {}
+    return out
+
+
+def _split_csv(raw: str) -> list[str]:
+    out: list[str] = []
+    for item in str(raw or "").split(","):
+        s = item.strip()
+        if s:
+            out.append(s)
+    return out
 
 
 def _load_schema_text(path: Path) -> str:
@@ -621,6 +690,24 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--init-schema", action="store_true", help="Initialize schema before ingest")
     ap.add_argument("--dry-run", action="store_true", help="Parse/fetch only, do not write database")
     args = ap.parse_args(argv)
+
+    db_cfg = _load_runtime_config_from_db(args.dsn)
+    if db_cfg:
+        if (not args.exclude_category) and str(db_cfg.get("EH_FILTER_CATEGORY", "")).strip():
+            args.exclude_category = _split_csv(db_cfg.get("EH_FILTER_CATEGORY", ""))
+        if args.min_rating is None and str(db_cfg.get("EH_MIN_RATING", "")).strip():
+            try:
+                args.min_rating = float(str(db_cfg.get("EH_MIN_RATING", "")).strip())
+            except Exception:
+                args.min_rating = None
+        if (not args.exclude_tag) and str(db_cfg.get("EH_FILTER_TAG", "")).strip():
+            args.exclude_tag = _split_csv(db_cfg.get("EH_FILTER_TAG", ""))
+        if not str(args.cookie or "").strip() and str(db_cfg.get("EH_COOKIE", "")).strip():
+            args.cookie = str(db_cfg.get("EH_COOKIE", "")).strip()
+        if args.user_agent == "AutoEhHunter/1.0" and str(db_cfg.get("EH_USER_AGENT", "")).strip():
+            args.user_agent = str(db_cfg.get("EH_USER_AGENT", "")).strip()
+        if args.api_url == DEFAULT_API_URL and str(db_cfg.get("EH_API_URL", "")).strip():
+            args.api_url = str(db_cfg.get("EH_API_URL", "")).strip()
 
     if args.queue_file and not args.gallery_file:
         args.gallery_file = args.queue_file

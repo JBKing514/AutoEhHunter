@@ -11,10 +11,12 @@ from urllib.parse import quote_plus, urlparse
 
 import pandas as pd
 import plotly.express as px
+import plotly.figure_factory as ff
 import psycopg
 import requests
 import requests_unixsocket
 import streamlit as st
+import numpy as np
 from apscheduler.schedulers.background import BackgroundScheduler
 from cryptography.fernet import Fernet, InvalidToken
 from sklearn.cluster import KMeans
@@ -75,9 +77,32 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "DATA_UI_LANG": {"type": "text", "default": "zh"},
     "TEXT_INGEST_PRUNE_NOT_SEEN": {"type": "bool", "default": True},
     "WORKER_ONLY_MISSING": {"type": "bool", "default": True},
+    "LRR_READS_HOURS": {"type": "int", "default": 24, "min": 1, "max": 720},
+    "EH_BASE_URL": {"type": "text", "default": "https://e-hentai.org"},
     "EH_FETCH_MAX_PAGES": {"type": "int", "default": 8, "min": 1, "max": 64},
+    "EH_REQUEST_SLEEP": {"type": "float", "default": 4.0, "min": 0.0, "max": 120.0},
+    "EH_SAMPLING_DENSITY": {"type": "float", "default": 1.0, "min": 0.0, "max": 1.0},
+    "EH_USER_AGENT": {"type": "text", "default": "AutoEhHunter/1.0"},
+    "EH_COOKIE": {"type": "text", "default": "", "secret": True},
+    "EH_FILTER_CATEGORY": {"type": "text", "default": ""},
+    "EH_MIN_RATING": {"type": "float", "default": 0.0, "min": 0.0, "max": 5.0},
+    "EH_FILTER_TAG": {"type": "text", "default": ""},
     "TEXT_INGEST_BATCH_SIZE": {"type": "int", "default": 1000, "min": 100, "max": 5000},
     "EH_QUEUE_LIMIT": {"type": "int", "default": 2000, "min": 100, "max": 5000},
+    "LLM_API_BASE": {"type": "url", "default": "http://llm-router:8000/v1"},
+    "LLM_API_KEY": {"type": "text", "default": "", "secret": True},
+    "LLM_MODEL": {"type": "text", "default": "qwen3-next-80b-instruct"},
+    "EMB_API_BASE": {"type": "url", "default": "http://llm-router:8000/v1"},
+    "EMB_API_KEY": {"type": "text", "default": "", "secret": True},
+    "EMB_MODEL": {"type": "text", "default": "bge-m3"},
+    "VL_BASE": {"type": "url", "default": "http://vl-server:8002"},
+    "EMB_BASE": {"type": "url", "default": "http://emb-server:8001"},
+    "VL_MODEL_ID": {"type": "text", "default": "vl"},
+    "EMB_MODEL_ID": {"type": "text", "default": "bge-m3"},
+    "SIGLIP_MODEL": {"type": "text", "default": "google/siglip-so400m-patch14-384"},
+    "SIGLIP_DEVICE": {"type": "text", "default": "cpu"},
+    "WORKER_BATCH": {"type": "int", "default": 32, "min": 1, "max": 512},
+    "WORKER_SLEEP": {"type": "float", "default": 0.0, "min": 0.0, "max": 60.0},
 }
 
 COMPUTE_ENV_FORWARD_KEYS = [
@@ -85,7 +110,30 @@ COMPUTE_ENV_FORWARD_KEYS = [
     "LRR_BASE",
     "LRR_API_KEY",
     "OPENAI_API_KEY",
+    "LLM_API_BASE",
+    "LLM_API_KEY",
+    "LLM_MODEL",
+    "EMB_API_BASE",
+    "EMB_API_KEY",
+    "EMB_MODEL",
+    "VL_BASE",
+    "EMB_BASE",
+    "VL_MODEL_ID",
+    "EMB_MODEL_ID",
+    "SIGLIP_MODEL",
+    "SIGLIP_DEVICE",
+    "WORKER_BATCH",
+    "WORKER_SLEEP",
     "WORKER_ONLY_MISSING",
+    "EH_BASE_URL",
+    "EH_FETCH_MAX_PAGES",
+    "EH_REQUEST_SLEEP",
+    "EH_SAMPLING_DENSITY",
+    "EH_USER_AGENT",
+    "EH_COOKIE",
+    "EH_FILTER_CATEGORY",
+    "EH_MIN_RATING",
+    "EH_FILTER_TAG",
     "EH_QUEUE_LIMIT",
 ]
 
@@ -114,6 +162,13 @@ def _normalize_value(key: str, raw: Any) -> str:
         except Exception:
             n = int(default)
         n = max(int(spec.get("min", n)), min(int(spec.get("max", n)), n))
+        return str(n)
+    if kind == "float":
+        try:
+            n = float(str(raw).strip())
+        except Exception:
+            n = float(default)
+        n = max(float(spec.get("min", n)), min(float(spec.get("max", n)), n))
         return str(n)
     if raw is None:
         return str(default)
@@ -588,6 +643,40 @@ def compute_exec_cmd(script_path: str, args: list[str] | None = None) -> list[st
     return cmd
 
 
+def sync_compute_config_key() -> tuple[bool, str]:
+    ensure_dirs()
+    if not APP_CONFIG_KEY_FILE.exists():
+        _ = get_config_cipher()
+    if not APP_CONFIG_KEY_FILE.exists():
+        return (False, "local key file missing")
+
+    key_txt = APP_CONFIG_KEY_FILE.read_text(encoding="utf-8", errors="replace").strip()
+    if not key_txt:
+        return (False, "local key is empty")
+
+    payload = (
+        "umask 077; "
+        "mkdir -p /app/runtime; "
+        f"printf '%s\\n' '{key_txt}' > /app/runtime/.app_config.key; "
+        "chmod 600 /app/runtime/.app_config.key"
+    )
+    cmd = ["docker", "exec", "-i", compute_container_name(), "sh", "-lc", payload]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
+        if int(proc.returncode) == 0:
+            return (True, "")
+        err = (proc.stderr or proc.stdout or "").strip()
+        return (False, err or "docker exec failed")
+    except FileNotFoundError:
+        rc, out, err = run_docker_exec_via_socket(cmd, timeout_s=30)
+        if rc == 0:
+            return (True, "")
+        msg = str(err or out or "").strip()
+        return (False, msg or "docker socket exec failed")
+    except Exception as e:
+        return (False, str(e))
+
+
 @st.cache_resource
 def get_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone="UTC")
@@ -756,6 +845,65 @@ def _validate_url(value: str, required: bool = False) -> str:
     return ""
 
 
+def _parse_eh_cookie(raw_cookie: str) -> dict[str, str]:
+    out = {
+        "ipb_member_id": "",
+        "ipb_pass_hash": "",
+        "sk": "",
+        "igneous": "",
+    }
+    s = str(raw_cookie or "").strip()
+    if not s:
+        return out
+    parts = [p.strip() for p in s.split(";") if p.strip()]
+    for part in parts:
+        if "=" not in part:
+            continue
+        k, v = part.split("=", 1)
+        kk = k.strip()
+        if kk in out:
+            out[kk] = v.strip()
+    return out
+
+
+def _build_eh_cookie(parts: dict[str, str]) -> str:
+    keys = ["ipb_member_id", "ipb_pass_hash", "sk", "igneous"]
+    pairs: list[str] = []
+    for key in keys:
+        v = str(parts.get(key, "")).strip()
+        if v:
+            pairs.append(f"{key}={v}")
+    return "; ".join(pairs)
+
+
+EH_CATEGORIES = [
+    "doujinshi",
+    "manga",
+    "image set",
+    "game cg",
+    "artist cg",
+    "cosplay",
+    "non-h",
+    "asian porn",
+    "western",
+    "misc",
+]
+
+
+def _split_csv_list(raw: str) -> list[str]:
+    out: list[str] = []
+    for item in str(raw or "").split(","):
+        s = item.strip()
+        if s:
+            out.append(s)
+    return out
+
+
+def _join_csv_list(items: list[str]) -> str:
+    cleaned = [str(x).strip() for x in items if str(x).strip()]
+    return ",".join(cleaned)
+
+
 def settings_page() -> None:
     st.subheader(t("settings.title"))
     cfg, meta = resolve_config()
@@ -769,7 +917,12 @@ def settings_page() -> None:
 
     has_lrr_key = bool(cfg.get("LRR_API_KEY", ""))
     has_openai_key = bool(cfg.get("OPENAI_API_KEY", ""))
+    has_llm_key = bool(cfg.get("LLM_API_KEY", ""))
+    has_emb_key = bool(cfg.get("EMB_API_KEY", ""))
     has_db_password = bool(cfg.get("POSTGRES_PASSWORD", ""))
+    cookie_parts = _parse_eh_cookie(cfg.get("EH_COOKIE", ""))
+    blocked_categories = {x.lower() for x in _split_csv_list(cfg.get("EH_FILTER_CATEGORY", ""))}
+    filter_tag_defaults = _split_csv_list(cfg.get("EH_FILTER_TAG", ""))
 
     with st.form("settings_form"):
         st.markdown(f"### {t('settings.section.db')}")
@@ -819,6 +972,7 @@ def settings_page() -> None:
         )
 
         st.markdown(f"### {t('settings.section.behavior')}")
+        st.markdown(f"#### {t('settings.section.data_node')}")
         c5, c6 = st.columns(2)
         prune_not_seen = c5.checkbox(
             t("settings.text_ingest.prune"),
@@ -828,6 +982,80 @@ def settings_page() -> None:
             t("settings.worker.only_missing"),
             value=_as_bool(cfg.get("WORKER_ONLY_MISSING", "1"), True),
         )
+
+        lrr_reads_hours = st.text_input(
+            t("settings.lrr.reads_hours"),
+            value=_normalize_value("LRR_READS_HOURS", cfg.get("LRR_READS_HOURS", "24")),
+        )
+        eh_base_url = st.text_input(
+            t("settings.eh.base_url"),
+            value=cfg.get("EH_BASE_URL", "https://e-hentai.org"),
+        )
+        c_req, c_sampling, c_ua = st.columns(3)
+        eh_request_sleep = c_req.text_input(
+            t("settings.eh.request_sleep"),
+            value=_normalize_value("EH_REQUEST_SLEEP", cfg.get("EH_REQUEST_SLEEP", "4")),
+        )
+        eh_sampling_pct = c_sampling.slider(
+            t("settings.eh.sampling_density"),
+            min_value=0,
+            max_value=100,
+            value=int(round(float(_normalize_value("EH_SAMPLING_DENSITY", cfg.get("EH_SAMPLING_DENSITY", "1"))) * 100)),
+            step=1,
+            format="%d%%",
+        )
+        eh_user_agent = c_ua.text_input(
+            t("settings.eh.user_agent"),
+            value=cfg.get("EH_USER_AGENT", "AutoEhHunter/1.0"),
+        )
+
+        st.markdown(f"##### {t('settings.eh.cookie')}")
+        c_cookie1, c_cookie2 = st.columns(2)
+        eh_cookie_member = c_cookie1.text_input("ipb_member_id", value=cookie_parts.get("ipb_member_id", ""))
+        eh_cookie_pass = c_cookie2.text_input("ipb_pass_hash", value=cookie_parts.get("ipb_pass_hash", ""))
+        c_cookie3, c_cookie4 = st.columns(2)
+        eh_cookie_sk = c_cookie3.text_input("sk", value=cookie_parts.get("sk", ""))
+        eh_cookie_igneous = c_cookie4.text_input("igneous", value=cookie_parts.get("igneous", ""))
+
+        st.markdown(f"##### {t('settings.eh.filter_category')}")
+        category_keys = list(EH_CATEGORIES)
+        category_checks: dict[str, bool] = {}
+        for row_start in range(0, len(category_keys), 2):
+            cc1, cc2 = st.columns(2)
+            pair = category_keys[row_start : row_start + 2]
+            col_list = [cc1, cc2]
+            for idx, cat in enumerate(pair):
+                col = col_list[idx]
+                category_checks[cat] = col.checkbox(
+                    cat.title(),
+                    value=(cat not in blocked_categories),
+                    key=f"eh_cat_allow_{cat}",
+                )
+
+        eh_min_rating = st.slider(
+            t("settings.eh.min_rating"),
+            min_value=0.0,
+            max_value=5.0,
+            value=float(_normalize_value("EH_MIN_RATING", cfg.get("EH_MIN_RATING", "0"))),
+            step=0.1,
+            format="%.1f",
+        )
+        try:
+            eh_filter_tags = st.multiselect(
+                t("settings.eh.filter_tag"),
+                options=filter_tag_defaults,
+                default=filter_tag_defaults,
+                accept_new_options=True,
+                key="eh_filter_tags_input",
+                help=t("settings.eh.filter_tag.help"),
+            )
+        except TypeError:
+            eh_filter_tags_raw = st.text_input(
+                t("settings.eh.filter_tag"),
+                value=_join_csv_list(filter_tag_defaults),
+                help=t("settings.eh.filter_tag.help"),
+            )
+            eh_filter_tags = _split_csv_list(eh_filter_tags_raw)
 
         c7, c8, c9 = st.columns(3)
         eh_max_pages = c7.slider(
@@ -863,6 +1091,53 @@ def settings_page() -> None:
             format_func=lambda x: x.upper(),
         )
 
+        st.markdown(f"#### {t('settings.section.compute_node')}")
+        st.caption(t("settings.compute.same_daemon_hint"))
+        c10, c11 = st.columns(2)
+        llm_api_base = c10.text_input(t("settings.compute.llm_api_base"), value=cfg.get("LLM_API_BASE", "http://llm-router:8000/v1"))
+        llm_model = c11.text_input(t("settings.compute.llm_model"), value=cfg.get("LLM_MODEL", "qwen3-next-80b-instruct"))
+        c12, c13 = st.columns(2)
+        emb_api_base = c12.text_input(t("settings.compute.emb_api_base"), value=cfg.get("EMB_API_BASE", "http://llm-router:8000/v1"))
+        emb_model = c13.text_input(t("settings.compute.emb_model"), value=cfg.get("EMB_MODEL", "bge-m3"))
+
+        c14, c15 = st.columns(2)
+        vl_base = c14.text_input(t("settings.compute.vl_base"), value=cfg.get("VL_BASE", "http://vl-server:8002"))
+        emb_base = c15.text_input(t("settings.compute.emb_base"), value=cfg.get("EMB_BASE", "http://emb-server:8001"))
+
+        c16, c17 = st.columns(2)
+        vl_model_id = c16.text_input(t("settings.compute.vl_model_id"), value=cfg.get("VL_MODEL_ID", "vl"))
+        emb_model_id = c17.text_input(t("settings.compute.emb_model_id"), value=cfg.get("EMB_MODEL_ID", "bge-m3"))
+
+        c18, c19 = st.columns(2)
+        siglip_model = c18.text_input(t("settings.compute.siglip_model"), value=cfg.get("SIGLIP_MODEL", "google/siglip-so400m-patch14-384"))
+        siglip_device = c19.text_input(t("settings.compute.siglip_device"), value=cfg.get("SIGLIP_DEVICE", "cpu"))
+
+        c20, c21 = st.columns(2)
+        worker_batch = c20.slider(
+            t("settings.compute.worker_batch"),
+            min_value=1,
+            max_value=512,
+            value=int(_normalize_value("WORKER_BATCH", cfg.get("WORKER_BATCH", "32"))),
+            step=1,
+        )
+        worker_sleep = c21.text_input(
+            t("settings.compute.worker_sleep"),
+            value=_normalize_value("WORKER_SLEEP", cfg.get("WORKER_SLEEP", "0")),
+        )
+
+        llm_api_key = st.text_input(
+            t("settings.compute.llm_api_key"),
+            value="",
+            type="password",
+            placeholder=t("settings.secret.keep") if has_llm_key else "",
+        )
+        emb_api_key = st.text_input(
+            t("settings.compute.emb_api_key"),
+            value="",
+            type="password",
+            placeholder=t("settings.secret.keep") if has_emb_key else "",
+        )
+
         submitted = st.form_submit_button(t("settings.save"))
 
     if not submitted:
@@ -875,6 +1150,23 @@ def settings_page() -> None:
     compute_err = _validate_url(compute_health, required=True)
     if compute_err:
         errs.append(t("settings.err.compute_health"))
+    eh_base_err = _validate_url(eh_base_url, required=True)
+    if eh_base_err:
+        errs.append(t("settings.err.eh_base_url"))
+
+    llm_base_err = _validate_url(llm_api_base, required=True)
+    if llm_base_err:
+        errs.append(t("settings.err.compute_llm_api_base"))
+    emb_api_base_err = _validate_url(emb_api_base, required=True)
+    if emb_api_base_err:
+        errs.append(t("settings.err.compute_emb_api_base"))
+    vl_base_err = _validate_url(vl_base, required=True)
+    if vl_base_err:
+        errs.append(t("settings.err.compute_vl_base"))
+    emb_base_err = _validate_url(emb_base, required=True)
+    if emb_base_err:
+        errs.append(t("settings.err.compute_emb_base"))
+
     port_txt = str(db_port or "").strip()
     if not port_txt.isdigit():
         errs.append(t("settings.err.pg_port_digits"))
@@ -886,6 +1178,33 @@ def settings_page() -> None:
     openai_err = _validate_url(openai_health, required=False)
     if openai_err == "invalid":
         errs.append(t("settings.err.openai_health"))
+
+    reads_hours_txt = str(lrr_reads_hours or "").strip()
+    if not reads_hours_txt.isdigit():
+        errs.append(t("settings.err.lrr_reads_hours"))
+        reads_hours_int = int(_normalize_value("LRR_READS_HOURS", "24"))
+    else:
+        reads_hours_int = int(reads_hours_txt)
+        if reads_hours_int < 1 or reads_hours_int > 720:
+            errs.append(t("settings.err.lrr_reads_hours_range"))
+
+    eh_sleep_txt = str(eh_request_sleep or "").strip()
+    try:
+        eh_sleep_float = float(eh_sleep_txt)
+    except Exception:
+        eh_sleep_float = 4.0
+        errs.append(t("settings.err.eh_request_sleep"))
+    if eh_sleep_float < 0:
+        errs.append(t("settings.err.eh_request_sleep_range"))
+
+    worker_sleep_txt = str(worker_sleep or "").strip()
+    try:
+        worker_sleep_float = float(worker_sleep_txt)
+    except Exception:
+        worker_sleep_float = 0.0
+        errs.append(t("settings.err.compute_worker_sleep"))
+    if worker_sleep_float < 0:
+        errs.append(t("settings.err.compute_worker_sleep_range"))
 
     if errs:
         for e in errs:
@@ -909,11 +1228,47 @@ def settings_page() -> None:
         new_cfg["OPENAI_API_KEY"] = openai_api_key.strip()
     new_cfg["TEXT_INGEST_PRUNE_NOT_SEEN"] = _str_bool(prune_not_seen)
     new_cfg["WORKER_ONLY_MISSING"] = _str_bool(worker_only_missing)
+    new_cfg["LRR_READS_HOURS"] = str(reads_hours_int)
+    new_cfg["EH_BASE_URL"] = eh_base_url.strip().rstrip("/")
     new_cfg["EH_FETCH_MAX_PAGES"] = str(eh_max_pages)
+    new_cfg["EH_REQUEST_SLEEP"] = str(eh_sleep_float)
+    new_cfg["EH_SAMPLING_DENSITY"] = str(eh_sampling_pct / 100.0)
+    new_cfg["EH_USER_AGENT"] = eh_user_agent.strip()
+    new_cfg["EH_COOKIE"] = _build_eh_cookie(
+        {
+            "ipb_member_id": eh_cookie_member,
+            "ipb_pass_hash": eh_cookie_pass,
+            "sk": eh_cookie_sk,
+            "igneous": eh_cookie_igneous,
+        }
+    )
+    blocked_out: list[str] = []
+    for cat in EH_CATEGORIES:
+        if not bool(category_checks.get(cat, True)):
+            blocked_out.append(cat)
+    new_cfg["EH_FILTER_CATEGORY"] = _join_csv_list(blocked_out)
+    new_cfg["EH_MIN_RATING"] = str(round(float(eh_min_rating), 1))
+    new_cfg["EH_FILTER_TAG"] = _join_csv_list([str(x).strip().lower() for x in eh_filter_tags])
     new_cfg["TEXT_INGEST_BATCH_SIZE"] = str(text_batch)
     new_cfg["EH_QUEUE_LIMIT"] = str(eh_queue_limit)
     new_cfg["COMPUTE_CONTAINER_NAME"] = compute_container.strip() or "autoeh-compute"
     new_cfg["DATA_UI_LANG"] = data_ui_lang.strip().lower()
+    new_cfg["LLM_API_BASE"] = llm_api_base.strip()
+    if llm_api_key.strip():
+        new_cfg["LLM_API_KEY"] = llm_api_key.strip()
+    new_cfg["LLM_MODEL"] = llm_model.strip()
+    new_cfg["EMB_API_BASE"] = emb_api_base.strip()
+    if emb_api_key.strip():
+        new_cfg["EMB_API_KEY"] = emb_api_key.strip()
+    new_cfg["EMB_MODEL"] = emb_model.strip()
+    new_cfg["VL_BASE"] = vl_base.strip()
+    new_cfg["EMB_BASE"] = emb_base.strip()
+    new_cfg["VL_MODEL_ID"] = vl_model_id.strip()
+    new_cfg["EMB_MODEL_ID"] = emb_model_id.strip()
+    new_cfg["SIGLIP_MODEL"] = siglip_model.strip()
+    new_cfg["SIGLIP_DEVICE"] = siglip_device.strip()
+    new_cfg["WORKER_BATCH"] = str(worker_batch)
+    new_cfg["WORKER_SLEEP"] = str(worker_sleep_float)
     new_cfg["POSTGRES_DSN"] = _build_dsn(new_cfg)
 
     _save_json_config(new_cfg)
@@ -924,6 +1279,12 @@ def settings_page() -> None:
         st.success(t("settings.saved_db"))
     else:
         st.warning(t("settings.saved_db_failed", reason=db_err or "n/a"))
+
+    ok_sync, sync_err = sync_compute_config_key()
+    if ok_sync:
+        st.success(t("settings.key_sync_ok"))
+    else:
+        st.warning(t("settings.key_sync_failed", reason=sync_err or "n/a"))
 
     resolve_config(force_refresh=True)
     st.session_state.ui_lang = new_cfg.get("DATA_UI_LANG", "zh")
@@ -950,46 +1311,278 @@ def audit_page() -> None:
 
 def xp_map_page() -> None:
     st.subheader(t("xp.title"))
-    days = st.slider(t("xp.days"), min_value=3, max_value=90, value=30)
-    k = st.slider(t("xp.k"), min_value=2, max_value=8, value=3)
-
-    sql = (
-        "SELECT w.arcid, w.title, w.tags "
-        "FROM works w JOIN read_events r ON r.arcid = w.arcid "
-        "WHERE r.read_time >= extract(epoch from now())::bigint - %s "
-        "GROUP BY w.arcid, w.title, w.tags "
-        "LIMIT 1000"
+    c0, c1, c2 = st.columns(3)
+    mode = c0.selectbox(
+        t("xp.mode"),
+        options=["read_history", "inventory"],
+        index=0,
+        format_func=lambda v: t("xp.mode.read_history") if v == "read_history" else t("xp.mode.inventory"),
     )
-    df = query_df(sql, (days * 86400,))
+    if mode == "read_history":
+        time_basis = "read_time"
+        c1.selectbox(
+            t("xp.time_basis"),
+            options=["read_time"],
+            index=0,
+            disabled=True,
+            format_func=lambda _: t("xp.time_basis.read_time"),
+        )
+    else:
+        time_basis = c1.selectbox(
+            t("xp.time_basis"),
+            options=["eh_posted", "date_added"],
+            index=0,
+            format_func=lambda v: t("xp.time_basis.eh_posted") if v == "eh_posted" else t("xp.time_basis.date_added"),
+        )
+    max_points = c2.slider(t("xp.max_points"), min_value=200, max_value=5000, value=1800, step=100)
+
+    c3, c4, c5 = st.columns(3)
+    days = c3.slider(t("xp.days"), min_value=3, max_value=365, value=30)
+    k = c4.slider(t("xp.k"), min_value=2, max_value=8, value=3)
+    topn = c5.slider(t("xp.cluster_topn"), min_value=2, max_value=6, value=3)
+    f1, f2 = st.columns(2)
+    exclude_language_tags = f1.checkbox(t("xp.exclude.language"), value=True)
+    exclude_other_tags = f2.checkbox(t("xp.exclude.other"), value=False)
+
+    basis_col = "eh_posted" if time_basis == "eh_posted" else "date_added"
+    horizon_s = int(days * 86400)
+    if mode == "read_history":
+        sql = (
+            f"SELECT DISTINCT w.arcid, w.title, w.tags "
+            f"FROM works w JOIN read_events r ON r.arcid = w.arcid "
+            f"WHERE r.read_time >= extract(epoch from now())::bigint - %s "
+            f"LIMIT %s"
+        )
+        df = query_df(sql, (horizon_s, int(max_points)))
+    else:
+        sql = (
+            f"SELECT w.arcid, w.title, w.tags "
+            f"FROM works w "
+            f"WHERE coalesce(w.{basis_col}, 0) >= extract(epoch from now())::bigint - %s "
+            f"LIMIT %s"
+        )
+        df = query_df(sql, (horizon_s, int(max_points)))
+
     if df.empty:
         st.warning(t("xp.no_data"))
         return
 
-    docs = [" ".join((tags or [])) for tags in df["tags"].tolist()]
+    lang_prefixes = ("language:", "语言:")
+    other_prefixes = ("other:", "misc:", "其他:", "杂项:")
+    hard_block_prefixes = ("uploader:", "date_added:", "上传者:", "入库时间:")
+
+    def _normalize_tags(raw: Any) -> list[str]:
+        if isinstance(raw, list):
+            return [str(x).strip() for x in raw if str(x).strip()]
+        if isinstance(raw, tuple):
+            return [str(x).strip() for x in list(raw) if str(x).strip()]
+        if raw is None:
+            return []
+        s = str(raw).strip()
+        if not s:
+            return []
+        return [s]
+
+    def _keep_tag(tag: str) -> bool:
+        low = str(tag).strip().lower()
+        if low.startswith(hard_block_prefixes):
+            return False
+        if exclude_language_tags and low.startswith(lang_prefixes):
+            return False
+        if exclude_other_tags and low.startswith(other_prefixes):
+            return False
+        return True
+
+    docs = [" ".join([tg for tg in _normalize_tags(tags) if _keep_tag(tg)]) for tags in df["tags"].tolist()]
     if len(docs) < 4 or sum(len(d.strip()) > 0 for d in docs) < 4:
         st.warning(t("xp.no_tags"))
         return
 
     vec = TfidfVectorizer(max_features=3000, token_pattern=r"[^\s]+")
     X = vec.fit_transform(docs)
+    feature_names = vec.get_feature_names_out().tolist()
     n_samples = X.shape[0]
     k_use = min(k, max(2, n_samples // 2))
     km = KMeans(n_clusters=k_use, n_init=10, random_state=42)
     labels = km.fit_predict(X)
 
+    centers = km.cluster_centers_
+    cluster_name_map: dict[int, str] = {}
+    for cid in range(k_use):
+        weights = centers[cid].tolist() if hasattr(centers[cid], "tolist") else list(centers[cid])
+        ranked_idx = sorted(range(len(weights)), key=lambda i: weights[i], reverse=True)[:topn]
+        top_terms = [feature_names[i] for i in ranked_idx if i < len(feature_names) and weights[i] > 0]
+        cluster_name_map[cid] = " / ".join(top_terms) if top_terms else t("xp.cluster.fallback", id=cid)
+
     pca = PCA(n_components=2, random_state=42)
     coords = pca.fit_transform(X.toarray())
+
+    def _wrap_terms(terms: list[str], line_size: int = 3) -> str:
+        if not terms:
+            return "-"
+        chunks = [terms[i : i + line_size] for i in range(0, len(terms), line_size)]
+        return "<br>".join([", ".join(c) for c in chunks])
+
+    def _axis_semantics(comp_idx: int) -> str:
+        if comp_idx >= len(pca.components_):
+            return t("xp.axis.unknown")
+        comp = pca.components_[comp_idx]
+        ranked_pos = sorted(range(len(comp)), key=lambda i: float(comp[i]), reverse=True)[: min(6, topn * 2)]
+        ranked_neg = sorted(range(len(comp)), key=lambda i: float(comp[i]))[: min(6, topn * 2)]
+        pos_terms = [feature_names[i] for i in ranked_pos if i < len(feature_names) and float(comp[i]) > 0]
+        neg_terms = [feature_names[i] for i in ranked_neg if i < len(feature_names) and float(comp[i]) < 0]
+        if not pos_terms and not neg_terms:
+            return t("xp.axis.unknown")
+        pos_txt = _wrap_terms(pos_terms)
+        neg_txt = _wrap_terms(neg_terms)
+        return t("xp.axis.explain", positive=pos_txt, negative=neg_txt).replace(" | ", "<br>")
+
+    x_var = float(pca.explained_variance_ratio_[0]) if len(pca.explained_variance_ratio_) > 0 else 0.0
+    y_var = float(pca.explained_variance_ratio_[1]) if len(pca.explained_variance_ratio_) > 1 else 0.0
+    x_title = t("xp.axis.x", ratio=round(x_var * 100.0, 1), semantic=_axis_semantics(0))
+    y_title = t("xp.axis.y", ratio=round(y_var * 100.0, 1), semantic=_axis_semantics(1))
+
+    cluster_labels = [cluster_name_map.get(int(v), t("xp.cluster.fallback", id=int(v))) for v in labels.tolist()]
     plot_df = pd.DataFrame(
         {
             "x": coords[:, 0],
             "y": coords[:, 1],
-            "cluster": labels.astype(str),
+            "cluster": cluster_labels,
             "title": df["title"].fillna("").astype(str),
             "arcid": df["arcid"].astype(str),
         }
     )
     fig = px.scatter(plot_df, x="x", y="y", color="cluster", hover_data=["title", "arcid"], title=t("xp.chart_title"))
+    fig.update_layout(
+        xaxis_title=x_title,
+        yaxis_title=y_title,
+        legend_title_text=t("xp.legend"),
+        height=760,
+        margin={"l": 120, "r": 40, "t": 80, "b": 130},
+    )
+    fig.update_xaxes(automargin=True)
+    fig.update_yaxes(automargin=True, scaleanchor="x", scaleratio=1)
     st.plotly_chart(fig, width="stretch")
+
+    st.markdown(f"### {t('xp.dendrogram.title')}")
+    import scipy.cluster.hierarchy as sch
+
+    max_dendro_points = 100
+    if X.shape[0] < 4:
+        st.info(t("xp.dendrogram.too_few"))
+        return
+
+    dendro_idx = list(range(X.shape[0]))
+    if len(dendro_idx) > max_dendro_points:
+        dendro_idx = dendro_idx[:max_dendro_points]
+        st.caption(t("xp.dendrogram.truncated", n=max_dendro_points, total=X.shape[0]))
+    else:
+        st.caption(t("xp.dendrogram.full", total=X.shape[0]))
+
+    dense_subset = X[dendro_idx].toarray()
+    label_subset: list[str] = []
+    for i in dendro_idx:
+        title = str(df.iloc[i]["title"] or "").strip()
+        short_title = title[:30] + ".." if len(title) > 30 else title
+        label_subset.append(short_title)
+
+    try:
+        c1, c2 = st.columns([1, 1])
+        color_threshold = c1.slider(t("xp.dendrogram.threshold"), 0.5, 2.5, 1.2, 0.1)
+        label_density = c2.slider(t("xp.dendrogram.label_density"), 5, 50, 20, 5)
+        dynamic_height = max(800, len(dendro_idx) * 25)
+
+        linkage_matrix = sch.linkage(dense_subset, method="ward")
+        dendro = ff.create_dendrogram(
+            dense_subset,
+            labels=label_subset,
+            orientation="left",
+            color_threshold=color_threshold,
+            linkagefun=lambda _: linkage_matrix,
+        )
+
+        vocab = np.array(vec.get_feature_names_out())
+        n_leaf_samples = len(dendro_idx)
+        cluster_info: dict[int, dict[str, Any]] = {}
+
+        # IMPORTANT: use actual tick values produced by Plotly figure instead of
+        # assuming the classic 5,15,25... spacing. Otherwise annotations can be
+        # placed far outside branch merge nodes.
+        dendro_data = sch.dendrogram(linkage_matrix, orientation="left", no_plot=True)
+        leaf_order = [int(x) for x in dendro_data.get("leaves", [])]
+        tickvals_raw = list(dendro.layout.yaxis.tickvals or [])
+        y_tickvals = [float(v) for v in tickvals_raw]
+        if len(y_tickvals) != len(leaf_order):
+            y_tickvals = [5.0 + i * 10.0 for i in range(len(leaf_order))]
+
+        for y_pos_idx, original_idx in enumerate(leaf_order):
+            y_coord = y_tickvals[y_pos_idx]
+            cluster_info[original_idx] = {"y": float(y_coord), "indices": [original_idx]}
+
+        total_merges = len(linkage_matrix)
+        start_annotate_idx = max(0, total_merges - int(label_density))
+
+        for i, row in enumerate(linkage_matrix):
+            child1_id = int(row[0])
+            child2_id = int(row[1])
+            dist = float(row[2])
+            new_id = n_leaf_samples + i
+
+            info1 = cluster_info.get(child1_id)
+            info2 = cluster_info.get(child2_id)
+            if info1 is None or info2 is None:
+                continue
+
+            new_y = (float(info1["y"]) + float(info2["y"])) / 2.0
+            new_indices = list(info1["indices"]) + list(info2["indices"])
+            cluster_info[new_id] = {"y": new_y, "indices": new_indices}
+
+            if i < start_annotate_idx:
+                continue
+
+            cluster_vecs = dense_subset[new_indices]
+            mean_vec = cluster_vecs.mean(axis=0)
+            top_indices = mean_vec.argsort()[-2:][::-1]
+            valid_tags: list[str] = []
+            for j in top_indices:
+                idx = int(j)
+                if idx < len(vocab) and float(mean_vec[idx]) > 0.05:
+                    valid_tags.append(str(vocab[idx]))
+
+            if not valid_tags:
+                continue
+
+            tag_text = "<br>".join(valid_tags)
+            dendro.add_annotation(
+                x=dist,
+                y=new_y,
+                text=tag_text,
+                showarrow=True,
+                arrowhead=0,
+                arrowcolor="#888",
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="#ccc",
+                borderwidth=1,
+                font={"size": 10, "color": "black"},
+                xanchor="left",
+                ax=20,
+                ay=0,
+            )
+
+        dendro.update_layout(
+            width=1100,
+            height=dynamic_height,
+            margin={"l": 200, "r": 100, "t": 50, "b": 50},
+            xaxis_title=t("xp.dendrogram.x"),
+            yaxis_title=t("xp.dendrogram.y"),
+            showlegend=False,
+            hovermode=False,
+        )
+        dendro.update_xaxes(automargin=True)
+        dendro.update_yaxes(automargin=True, tickfont={"size": 12})
+        st.plotly_chart(dendro, width="stretch")
+    except Exception as e:
+        st.warning(t("xp.dendrogram.error", reason=str(e)))
 
 
 def main() -> None:

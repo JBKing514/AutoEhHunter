@@ -47,6 +47,69 @@ def _b64(s: str) -> str:
     return base64.b64encode(s.encode("utf-8")).decode("ascii")
 
 
+def _get_config_cipher_key() -> bytes | None:
+    key_env = os.getenv("DATA_UI_CONFIG_CRYPT_KEY", "").strip()
+    if key_env:
+        if len(key_env) == 44 and key_env.endswith("="):
+            return key_env.encode("ascii")
+        return base64.urlsafe_b64encode(key_env.encode("utf-8")[:32].ljust(32, b"0"))
+
+    candidates = [Path("/app/runtime/webui/.app_config.key"), Path("/app/runtime/.app_config.key")]
+    for p in candidates:
+        if p.exists():
+            try:
+                return p.read_bytes().strip()
+            except Exception:
+                continue
+    return None
+
+
+def _decrypt_secret_if_needed(value: str) -> str:
+    s = str(value or "").strip()
+    if not s.startswith("enc:v1:"):
+        return s
+    key = _get_config_cipher_key()
+    if not key:
+        return ""
+    try:
+        from cryptography.fernet import Fernet
+
+        token = s[len("enc:v1:") :]
+        return Fernet(key).decrypt(token.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return ""
+
+
+def _load_runtime_config_from_db(dsn: str) -> dict[str, str]:
+    s = str(dsn or "").strip()
+    if not s:
+        return {}
+    try:
+        import importlib
+
+        psycopg = importlib.import_module("psycopg")
+    except Exception:
+        return {}
+
+    out: dict[str, str] = {}
+    sql = "SELECT key, value, is_secret FROM app_config WHERE scope = %s"
+    try:
+        with psycopg.connect(s) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, ("global",))
+                for key, value, is_secret in cur.fetchall():
+                    k = str(key)
+                    v = str(value or "")
+                    out[k] = _decrypt_secret_if_needed(v) if bool(is_secret) else v
+    except Exception:
+        return {}
+    return out
+
+
+def _arg_present(argv: list[str], opt: str) -> bool:
+    return opt in argv
+
+
 def _vector_literal(vec: list[float]) -> str:
     # pgvector accepts: '[1,2,3]'
     # Keep it compact; avoid scientific notation pitfalls by using repr.
@@ -735,6 +798,43 @@ def main(argv: list[str]) -> int:
     )
 
     args = ap.parse_args(argv)
+
+    db_cfg = _load_runtime_config_from_db(args.dsn)
+    if db_cfg:
+        if not _arg_present(argv, "--lrr-base") and str(db_cfg.get("LRR_BASE", "")).strip():
+            args.lrr_base = str(db_cfg.get("LRR_BASE", "")).strip()
+        if not _arg_present(argv, "--lrr-api-key") and str(db_cfg.get("LRR_API_KEY", "")).strip():
+            args.lrr_api_key = str(db_cfg.get("LRR_API_KEY", "")).strip()
+        if not _arg_present(argv, "--vl-base") and str(db_cfg.get("VL_BASE", "")).strip():
+            args.vl_base = str(db_cfg.get("VL_BASE", "")).strip()
+        if not _arg_present(argv, "--emb-base") and str(db_cfg.get("EMB_BASE", "")).strip():
+            args.emb_base = str(db_cfg.get("EMB_BASE", "")).strip()
+        if not _arg_present(argv, "--vl-model") and str(db_cfg.get("VL_MODEL_ID", "")).strip():
+            args.vl_model = str(db_cfg.get("VL_MODEL_ID", "")).strip()
+        if not _arg_present(argv, "--emb-model") and str(db_cfg.get("EMB_MODEL_ID", "")).strip():
+            args.emb_model = str(db_cfg.get("EMB_MODEL_ID", "")).strip()
+        if not _arg_present(argv, "--siglip-model") and str(db_cfg.get("SIGLIP_MODEL", "")).strip():
+            args.siglip_model = str(db_cfg.get("SIGLIP_MODEL", "")).strip()
+        if not _arg_present(argv, "--siglip-device") and str(db_cfg.get("SIGLIP_DEVICE", "")).strip():
+            args.siglip_device = str(db_cfg.get("SIGLIP_DEVICE", "")).strip()
+        if not _arg_present(argv, "--batch") and str(db_cfg.get("WORKER_BATCH", "")).strip():
+            try:
+                args.batch = int(str(db_cfg.get("WORKER_BATCH", "")).strip())
+            except Exception:
+                pass
+        if not _arg_present(argv, "--sleep") and str(db_cfg.get("WORKER_SLEEP", "")).strip():
+            try:
+                args.sleep = float(str(db_cfg.get("WORKER_SLEEP", "")).strip())
+            except Exception:
+                pass
+        if not _arg_present(argv, "--only-missing") and str(db_cfg.get("WORKER_ONLY_MISSING", "")).strip():
+            args.only_missing = str(db_cfg.get("WORKER_ONLY_MISSING", "")).strip().lower() in (
+                "1",
+                "true",
+                "yes",
+                "y",
+                "on",
+            )
 
     auth = None
     if args.lrr_api_key_b64.strip():
