@@ -153,6 +153,17 @@ AutoEhHunter 专为 Docker 环境设计。
 * **[compute容器详细配置参考](Docker/compute/README.md)** - *进阶容器说明*
 * n8n，LANraragi，pgvector相关配置参考，请参考相关项目文档
 * 
+
+## 配置与持久化说明
+
+- 首次部署建议先完整填写 `Docker/data/.env` 与 `Docker/compute/.env`。
+- 部署后可通过 Data UI 的 `Settings` 页面在线修改核心配置，保存后立即生效，通常无需重建容器。
+- 配置优先级：`app_config(DB) > JSON fallback > .env`。
+- Secrets/token 以可逆加密形式存入 `app_config`；当前无密钥轮换功能。
+- 若密钥文件丢失，历史密文无法解密，需要在 WebUI 重新填写密码与 token 并保存一次。
+- 当前架构下，Data 与 Compute 之间不再依赖共享队列目录；EH URL 通过 PostgreSQL 表 `eh_queue` 传递。
+- 仍需保留各容器运行时持久化目录（例如 runtime、数据库卷、n8n数据卷）。
+
 ## 技术栈 (Technology Stack)
 
 * **向量数据库**: PostgreSQL 17 + `pgvector`

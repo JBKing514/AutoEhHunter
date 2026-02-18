@@ -31,7 +31,6 @@ docker run -d \
   --restart unless-stopped \
   --env-file data/.env \
   -v "$(pwd)/data/runtime:/app/runtime" \
-  -v "$(pwd)/data/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
   autoeh-data:local shell -lc "sleep infinity"
 ```
 
@@ -52,7 +51,6 @@ docker run -d \
   --env-file data/.env \
   -p 8501:8501 \
   -v "$(pwd)/data/runtime:/app/runtime" \
-  -v "$(pwd)/data/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   autoeh-data:local data-ui
 ```
@@ -62,13 +60,12 @@ so Docker socket mount is required and `COMPUTE_CONTAINER_NAME` must match your 
 
 ## 3) Run commands
 
-Fetch EH URLs into shared queue:
+Fetch EH URLs into PostgreSQL queue table (`eh_queue`):
 
 ```bash
 docker run --rm \
   --env-file data/.env \
   -v "$(pwd)/data/runtime:/app/runtime" \
-  -v "$(pwd)/data/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
   autoeh-data:local eh-fetch
 ```
 
@@ -78,7 +75,6 @@ Export LANraragi metadata:
 docker run --rm \
   --env-file data/.env \
   -v "$(pwd)/data/runtime:/app/runtime" \
-  -v "$(pwd)/data/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
   autoeh-data:local lrr-export-meta
 ```
 
@@ -88,7 +84,6 @@ Run daily LRR export workflow (metadata -> recent reads):
 docker run --rm \
   --env-file data/.env \
   -v "$(pwd)/data/runtime:/app/runtime" \
-  -v "$(pwd)/data/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
   autoeh-data:local lrr-export-daily
 ```
 
@@ -98,7 +93,6 @@ Ingest JSONL into Postgres:
 docker run --rm \
   --env-file data/.env \
   -v "$(pwd)/data/runtime:/app/runtime" \
-  -v "$(pwd)/data/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
   autoeh-data:local text-ingest --input /app/runtime/exports/lrr_metadata.jsonl --init-schema --schema /app/textIngest/schema.sql
 ```
 
@@ -108,7 +102,6 @@ Run daily text ingest workflow (reads env-configured input list):
 docker run --rm \
   --env-file data/.env \
   -v "$(pwd)/data/runtime:/app/runtime" \
-  -v "$(pwd)/data/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
   autoeh-data:local text-ingest-daily
 ```
 
@@ -120,7 +113,10 @@ Safety guard in `text-ingest-daily`:
 
 ## Notes
 
-- For cross-container EH ingest handoff, share `./data/eh_ingest_cache` with compute container and map it to `/app/runtime/eh_ingest_cache` in both containers.
+- EH URL handoff now uses PostgreSQL table `eh_queue`; no cross-container shared queue directory is required.
 - `n8nWorkflows` is intentionally excluded from this container and distributed via `Companion`.
 - On first container start, schema bootstrap runs once from `/app/textIngest/schema.sql`.
 - If DB is unreachable, details are written to `/app/runtime/logs/db_init.log` for troubleshooting.
+- Data UI supports online configuration (`Settings` tab): save and apply immediately without redeploying containers.
+- Recommended workflow: fill `.env` before first start for baseline stability, then tune configs in WebUI later.
+- Secrets/tokens are stored in `app_config` with reversible encryption. If encryption key is lost, re-enter secrets in WebUI and save once to regenerate/re-distribute key material.

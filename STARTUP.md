@@ -28,6 +28,11 @@
     data容器： Database，Data UI，LANraragi必填，EH queue fetch中的EH_COOKIE=建议填写，但不填也能调用EH API
     如果您有里站访问权限，填写COOKIE后可尝试将EH_BASE_URL替换为里站地址以获取里站结果
 
+3.  **配置策略建议**
+    * 首次启动前，建议先把 `.env` 填完整（最稳）。
+    * 启动后可在 Data UI 的 `Settings` 页在线修改配置，保存后立即生效，无需重建容器。
+    * Secrets/Token 会以可逆加密写入 `app_config`。当前无密钥轮换功能；若密钥文件丢失，需要重新填写密码与 token 并保存一次以重新生成与下发密钥。
+
 
 ## 2. 选择部署模式 (三选一)
 
@@ -65,7 +70,7 @@
 
 请参考 `Docker/compute/README.md` 和 `Docker/data/README.md` 中的 `docker run` 命令手动逐个拉起容器。
 
-> 注：当前版本默认通过 PostgreSQL `eh_queue` 传递 EH URL，通常不需要手动配置共享目录或额外初始化 schema。请确保 5 个容器（`pg17`、`lanraragi`、`n8n`、`data`、`compute`）网络互相可见，且都能连上 pgvector；否则 WebUI 的手动触发、定时任务、EH URL 抓取与入库可能不生效。
+> 注：当前版本默认通过 PostgreSQL `eh_queue` 传递 EH URL，容器之间无需共享队列目录。请确保 5 个容器（`pg17`、`lanraragi`、`n8n`、`data`、`compute`）网络互相可见，且都能连上 pgvector；否则 WebUI 的手动触发、定时任务、EH URL 抓取与入库可能不生效。
 
 ## 3. 首次初始化 (关键步骤)
 

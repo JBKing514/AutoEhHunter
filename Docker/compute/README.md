@@ -31,7 +31,6 @@ docker run -d \
   -p 18080:18080 \
   -v "$(pwd)/compute/runtime:/app/runtime" \
   -v "$(pwd)/compute/hf_cache:/root/.cache/huggingface" \
-  -v "$(pwd)/compute/eh_ingest_cache:/app/runtime/eh_ingest_cache" \
   autoeh-compute:local agent
 ```
 
@@ -49,7 +48,7 @@ Run vector worker:
 docker compose -f compute_docker-compose.yml run --rm compute worker --limit 20 --only-missing
 ```
 
-Ingest EH metadata from queue:
+Ingest EH metadata from PostgreSQL queue table:
 
 ```bash
 docker compose -f compute_docker-compose.yml run --rm compute eh-ingest --queue-table eh_queue
@@ -66,4 +65,4 @@ docker compose -f compute_docker-compose.yml run --rm compute shell
 - The container defaults to `command: ["agent"]`; keep it for always-on API service.
 - One-shot jobs reuse the same `.env`, so there is only one config surface for compute side.
 - `./compute/runtime` is used for runtime logs/state/media cache.
-- `./compute/eh_ingest_cache` is the shared queue directory for cross-container EH URL handoff.
+- EH incremental queue is stored in PostgreSQL table `eh_queue` (no shared queue directory required).
