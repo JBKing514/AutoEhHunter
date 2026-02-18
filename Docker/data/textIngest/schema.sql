@@ -137,4 +137,28 @@ CREATE TABLE IF NOT EXISTS eh_queue (
 CREATE INDEX IF NOT EXISTS idx_eh_queue_status_created ON eh_queue (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_eh_queue_gid_token ON eh_queue (gid, token);
 
+-- Runtime configuration store (PG -> JSON -> ENV fallback chain).
+CREATE TABLE IF NOT EXISTS app_config (
+    scope        text NOT NULL DEFAULT 'global',
+    key          text NOT NULL,
+    value        text NOT NULL,
+    value_type   text NOT NULL DEFAULT 'string',
+    is_secret    boolean NOT NULL DEFAULT false,
+    description  text,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    updated_at   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (scope, key)
+);
+
+ALTER TABLE app_config ADD COLUMN IF NOT EXISTS scope text NOT NULL DEFAULT 'global';
+ALTER TABLE app_config ADD COLUMN IF NOT EXISTS key text;
+ALTER TABLE app_config ADD COLUMN IF NOT EXISTS value text;
+ALTER TABLE app_config ADD COLUMN IF NOT EXISTS value_type text NOT NULL DEFAULT 'string';
+ALTER TABLE app_config ADD COLUMN IF NOT EXISTS is_secret boolean NOT NULL DEFAULT false;
+ALTER TABLE app_config ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE app_config ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE app_config ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_app_config_updated_at ON app_config (updated_at);
+
 COMMIT;
