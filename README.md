@@ -1,5 +1,7 @@
 # AutoEhHunter
 
+> 🌐 语言 / Language: [中文](README.md) | [English](README_EN.md)
+
 ### 面向 E-Hentai 与 LANraragi 的私有化多模态 RAG 智能体
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/) [![Architecture](https://img.shields.io/badge/Architecture-Split%20Plane-purple)](docs/ARCHITECTURE.md)
@@ -7,7 +9,7 @@
 <p align="center">
   <img src="https://github.com/JBKing514/autoEhHunter/blob/main/Media/ico/AutoEhHunterLogo_256.png" width="256" alt="AutoEhHunter_Ico">
   <br>
-  <em>Project Logo</em>
+  <em>AutoEhHunter</em>
 </p>
 
 ## 开发初衷 (Motivation)
@@ -159,7 +161,7 @@ AutoEhHunter 专为 Docker 环境设计。
 - 首次部署建议先完整填写 `Docker/data/.env` 与 `Docker/compute/.env`。
 - 部署后可通过 Data UI 的 `Settings` 页面在线修改核心配置，保存后立即生效，通常无需重建容器。
 - 配置优先级：`app_config(DB) > JSON fallback > .env`。
-- Secrets/token 以可逆加密形式存入 `app_config`；当前无密钥轮换功能。
+- Secrets/token 以可逆加密形式存入 `app_config`；当前无密钥轮换功能，建议手动备份密钥。
 - 若密钥文件丢失，历史密文无法解密，需要在 WebUI 重新填写密码与 token 并保存一次。
 - 当前架构下，Data 与 Compute 之间不再依赖共享队列目录；EH URL 通过 PostgreSQL 表 `eh_queue` 传递。
 - 仍需保留各容器运行时持久化目录（例如 runtime、数据库卷、n8n数据卷）。

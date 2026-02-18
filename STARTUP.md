@@ -1,5 +1,7 @@
 # AutoEhHunter 快速启动指南
 
+> 🌐 语言 / Language: [中文](STARTUP.md) | [English](STARTUP_EN.md)
+
 ## 0. 前提条件
 
 * **Docker 环境**：推荐安装 Docker Desktop 或 Docker Engine (v27+)。
@@ -12,7 +14,7 @@
 
 1.  **克隆项目**
     ```bash
-    git clone [https://github.com/YourRepo/AutoEhHunter.git](https://github.com/YourRepo/AutoEhHunter.git)
+    git clone https://github.com/JBKing514/AutoEhHunter.git
     cd AutoEhHunter
     ```
 
@@ -31,7 +33,7 @@
 3.  **配置策略建议**
     * 首次启动前，建议先把 `.env` 填完整（最稳）。
     * 启动后可在 Data UI 的 `Settings` 页在线修改配置，保存后立即生效，无需重建容器。
-    * Secrets/Token 会以可逆加密写入 `app_config`。当前无密钥轮换功能；若密钥文件丢失，需要重新填写密码与 token 并保存一次以重新生成与下发密钥。
+    * Secrets/Token 会以可逆加密写入 `app_config`。当前无密钥轮换功能；若密钥文件丢失，需要重新填写密码与 token 并保存一次以重新生成与下发密钥，建议手动备份密钥。
 
 
 ## 2. 选择部署模式 (三选一)

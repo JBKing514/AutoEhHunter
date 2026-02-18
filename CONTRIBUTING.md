@@ -1,5 +1,7 @@
 # 贡献指南 (Contribution Guide)
 
+> 🌐 语言 / Language: [中文](CONTRIBUTING.md) | [English](CONTRIBUTING_EN.md)
+
 感谢您有兴趣为 **AutoEhHunter** 做出贡献！
 
 本项目的核心是一个高度依赖 **Prompt Engineering** 的 Agent 系统。为了确保系统的稳定性和Agent人格的一致性，任何针对 Prompt 的修改或多语言适配都必须遵循以下规范。
