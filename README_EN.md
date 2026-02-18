@@ -67,6 +67,11 @@ AutoEhHunter is not just a searcher, but a complete set of data governance solut
 * **XP Map**: Visualize your reading history as a 2D projection of high-dimensional clusters.
 * **Drift Detection**: The Agent monitors your reading habits and generates reports analyzing your preference evolution.
 * **Smart Interception**: Uses K-Means clustering to lock your "strike zone" vector, automatically intercepting newly uploaded resources that are mathematically aligned with your taste.
+<p align="center">
+  <img src="/Media/diagram/AutoEhHunter_PCA_XP_Plot.png" width="800" alt="AutoEhHunter_Diagram_ZH">
+  <br>
+  <em>AutoEhHunter support PCA and Hierarchical Clustering analysis for your personal taste</em>
+</p>
 
 ### 4. Tactical Adjutant (Agent)
 * **Narrative Report**: Reject boring JSON. Get daily/weekly reports written by a "Cyber Adjutant", with a sharp and to-the-point style.

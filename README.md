@@ -67,6 +67,11 @@ AutoEhHunter 不仅仅是一个搜索器，更是一整套数据治理方案：
 * **XP 地图**：将您的阅读历史可视化为高维簇的 2D 投影。
 * **漂移检测**：Agent 会监控您的阅读习惯，并生成报告分析您的偏好演变。
 * **智能截击**：利用 K-Means 聚类锁定您的“好球区”向量，自动拦截数学上与您口味对齐的新上传资源。
+<p align="center">
+  <img src="/Media/diagram/AutoEhHunter_PCA_XP_Plot.png" width="800" alt="AutoEhHunter_Diagram_ZH">
+  <br>
+  <em>AutoEhHunter支持PCA聚类和层次聚类分析</em>
+</p>
 
 ### 4. 战术副官（Agent）
 * **叙事报告**：拒绝枯燥的 JSON。获取由“赛博副官”撰写的日报/周报，风格毒舌且切中要害。
