@@ -102,8 +102,10 @@
     * 导入 `./Companion/n8nWorkflows/hunterAgent_sub.json` (工具调用)。
 
 4.  **鉴权配置**：
-    * 在 n8n 中配置 `OpenAI Chat Model` 的 Credentials (指向你的 LLM 后端)。
-    * 配置 `Telegram` 的 Bot Token。
+    * 在 n8n 中配置 `OpenAI Chat Model` 的 Credentials (指向你的 LLM 后端)，并选择你想指向的模型。
+    * `hunterAgent_sub`的`Call hunter_agent Skill`的URL栏里填写compute容器的IP地址:端口号
+    * 配置`hunterAgent_sub`的两个 `Telegram` 节点的 Bot Token。
+    * 注意在子节点中的`intent classifier`会调用新的openAI `response` API，确保选择的后端支持该API。
 
 5.  **Webhook 注意事项**：
     * **HTTPS 必须**：Telegram Bot API 要求 Webhook 回调地址必须是公网 HTTPS，否则无法注册Webhook。

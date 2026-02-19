@@ -102,8 +102,10 @@ After the container starts, the database is empty by default. Please initialize 
     * Import `./Companion/n8nWorkflows/hunterAgent_sub.json` (Tool Call).
 
 4.  **Authentication Configuration**:
-    * Configure Credentials for `OpenAI Chat Model` in n8n (pointing to your LLM backend).
-    * Configure Bot Token for `Telegram`.
+    * Configure Credentials for `OpenAI Chat Model` in n8n (pointing to your LLM backend), and select the model you want.
+    * In the `Call hunter_agent Skill` URL field of `hunterAgent_sub`, enter the IP address and port number of the compute container.
+    * Configure the Bot Tokens for the two `Telegram` nodes of `hunterAgent_sub`.
+    * Note that the `intent classifier` in the child nodes will call the new openAI `response` API; ensure that the selected backend supports this API.
 
 5.  **Webhook Notes**:
     * **HTTPS Required**: Telegram Bot API requires Webhook callback address to be public HTTPS, otherwise Webhook cannot be registered.

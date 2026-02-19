@@ -150,7 +150,7 @@
         }
       },
       "id": "b1dc801a-ea76-4c91-a897-0f5e71eaf6c3",
-      "name": "Call tr_agent Skill",
+      "name": "Call hunter_agent Skill",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
@@ -347,14 +347,14 @@
       "main": [
         [
           {
-            "node": "Call tr_agent Skill",
+            "node": "Call hunter_agent Skill",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Call tr_agent Skill": {
+    "Call hunter_agent Skill": {
       "main": [
         [
           {
