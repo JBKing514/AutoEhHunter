@@ -180,7 +180,7 @@ def _llm_extract_tags(
         model=settings.llm_model,
         messages=[ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)],
         temperature=0.0,
-        max_tokens=220,
+        max_tokens=1800,
     )
     obj = extract_json_object(text)
     tags = obj.get("tags")

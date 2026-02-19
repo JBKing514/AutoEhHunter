@@ -216,7 +216,7 @@ def _build_recommend_narrative(
             model=settings.llm_model,
             messages=[ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)],
             temperature=0.4,
-            max_tokens=260,
+            max_tokens=1800,
         )
         t = str(txt or "").strip()
         if t:

@@ -139,7 +139,7 @@ def run_profile(
             model=settings.llm_model,
             messages=[ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)],
             temperature=0.4,
-            max_tokens=700,
+            max_tokens=1800,
         )
         data["narrative"] = text
 

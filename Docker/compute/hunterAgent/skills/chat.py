@@ -25,7 +25,7 @@ def run_chat(*, settings: Settings, llm: OpenAICompatClient, payload: Dict[str, 
             return {"reply": ""}
 
     temperature = float(payload.get("temperature") or 0.2)
-    max_tokens = int(payload.get("max_tokens") or 800)
+    max_tokens = int(payload.get("max_tokens") or 1800)
     reply = llm.chat(
         model=str(payload.get("model") or settings.llm_model),
         messages=messages,
