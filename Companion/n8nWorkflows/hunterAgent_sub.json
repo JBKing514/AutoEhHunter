@@ -11,7 +11,7 @@
           ]
         }
       },
-      "id": "a9a876a1-02b6-491c-a891-c5ab11af329e",
+      "id": "4727c50f-67f1-41b9-8181-33292163e1b4",
       "typeVersion": 1.1,
       "name": "When Executed by Another Workflow",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
@@ -24,7 +24,7 @@
       "parameters": {
         "jsCode": "const src = $json.telegramMsg || $json;\nconst m = src.message || src;\n\nif (!m || typeof m !== 'object') {\n  const q = String(src?.input || '').trim();\n  return [{\n    json: {\n      chatId: src?.chatId || null,\n      hasPhoto: false,\n      hasText: !!q,\n      fileId: '',\n      query: q,\n      text: q,\n      caption: ''\n    }\n  }];\n}\n\nconst photos = Array.isArray(m.photo) ? m.photo : [];\nconst bestPhoto = photos.length ? photos[photos.length - 1] : null;\nconst text = String(m.text || src.input || '').trim();\nconst caption = String(m.caption || '').trim();\nconst query = caption || text;\n\nreturn [{\n  json: {\n    chatId: m.chat?.id || src.chatId || null,\n    hasPhoto: !!bestPhoto,\n    hasText: !!query,\n    fileId: bestPhoto?.file_id || '',\n    query,\n    text,\n    caption\n  }\n}];"
       },
-      "id": "c012f656-8275-4333-ae21-816c3136f02e",
+      "id": "250c52b8-df73-4982-88c8-09806bf024c0",
       "name": "Normalize Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -37,7 +37,7 @@
       "parameters": {
         "jsCode": "if (!$json.hasPhoto) {\n  return [];\n}\nreturn [{ json: $json }];"
       },
-      "id": "9e81cc93-efce-4518-9a6d-d0931af80952",
+      "id": "59d176dd-3745-4832-946f-98e347a7382e",
       "name": "Filter Image Messages",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -50,7 +50,7 @@
       "parameters": {
         "jsCode": "if ($json.hasPhoto) {\n  return [];\n}\nreturn [{ json: $json }];"
       },
-      "id": "5ae9c11a-bda9-4406-bebb-b2413d3dfb6a",
+      "id": "058178de-4dd0-4b5d-ad97-f43b083c1650",
       "name": "Filter Text-only Messages",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -64,7 +64,7 @@
         "url": "={{ 'https://api.telegram.org/bot' + '{your_bot_token}' + '/getFile?file_id=' + $json.fileId }}",
         "options": {}
       },
-      "id": "055ab7ed-ec6b-46f4-b43c-d190006f818b",
+      "id": "de9df9d3-6a4f-405d-bcf4-92c7e792b514",
       "name": "Telegram GetFile",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
@@ -78,7 +78,7 @@
         "url": "={{ 'https://api.telegram.org/file/bot' + '{your_bot_token}' + '/' + $json.result.file_path }}",
         "options": {}
       },
-      "id": "d74b6dd5-fe46-4f27-8662-7690a97fff89",
+      "id": "fe29cc93-c204-41d2-a0da-a422300ab181",
       "name": "Download Telegram Image",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
@@ -90,9 +90,9 @@
     },
     {
       "parameters": {
-        "jsCode": "const norm = $('Normalize Input').item.json;\nconst item = $input.item;\n\n// 找到实际 binary 字段名（通常是 data）\nconst binaryKeys = Object.keys(item.binary || {});\nif (!binaryKeys.length) {\n  throw new Error('No binary found on input item. Check Download Telegram Image output.');\n}\nconst key = binaryKeys.includes('data') ? 'data' : binaryKeys[0];\n\n// filesystem 模式下要用 helper 读 buffer\nconst buf = await this.helpers.getBinaryDataBuffer(0, key);\nif (!buf || !buf.length) {\n  throw new Error(`Binary buffer empty for key: ${key}`);\n}\n\nconst imageBase64 = buf.toString('base64');\n\nreturn [{\n  json: {\n    intent: 'SEARCH',\n    skillPath: '/skill/search',\n    payload: {\n      query: norm.query || '',\n      image_base64: imageBase64,\n      mode: norm.hasText ? 'mixed' : 'visual',\n      k: 10,\n      model: 'qwen3-next-80b-3card'\n    }\n  }\n}];\n"
+        "jsCode": "const norm = $('Normalize Input').item.json;\nconst item = $input.item;\n\n// 找到实际 binary 字段名（通常是 data）\nconst binaryKeys = Object.keys(item.binary || {});\nif (!binaryKeys.length) {\n  throw new Error('No binary found on input item. Check Download Telegram Image output.');\n}\nconst key = binaryKeys.includes('data') ? 'data' : binaryKeys[0];\n\n// filesystem 模式下要用 helper 读 buffer\nconst buf = await this.helpers.getBinaryDataBuffer(0, key);\nif (!buf || !buf.length) {\n  throw new Error(`Binary buffer empty for key: ${key}`);\n}\n\nconst imageBase64 = buf.toString('base64');\n\nreturn [{\n  json: {\n    intent: 'SEARCH',\n    skillPath: '/skill/search',\n    payload: {\n      query: norm.query || '',\n      image_base64: imageBase64,\n      mode: norm.hasText ? 'mixed' : 'visual',\n      k: 10,\n      model: 'huihui-qwen3-vl-32b-instruct-abliterated-i1'\n    }\n  }\n}];\n"
       },
-      "id": "a1b30f22-168d-420f-93bb-3328ef77275d",
+      "id": "e2068442-bd86-4312-9cd1-ac7e6add5e1f",
       "name": "Build Image Skill Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -103,28 +103,9 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "http://{your_openai_url:port}/v1/chat/completions",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"model\": \"qwen3-next-80b-3card\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"你是意图与参数提取器。请根据用户文本输出一个JSON对象，不要输出任何额外文字。\\nJSON schema:\\n{\\n  \\\"intent\\\": \\\"SEARCH|PROFILE|REPORT|RECOMMEND|CHAT\\\",\\n  \\\"search_mode\\\": \\\"auto|plot|visual|mixed|null\\\",\\n  \\\"search_k\\\": number|null,\\n  \\\"search_eh_scope\\\": \\\"mixed|external_only|internal_only|null\\\",\\n  \\\"search_eh_min_results\\\": number|null,\\n  \\\"profile_days\\\": number|null,\\n  \\\"profile_target\\\": \\\"reading|inventory|null\\\",\\n  \\\"report_type\\\": \\\"daily|weekly|monthly|full|null\\\",\\n  \\\"recommend_k\\\": number|null,\\n  \\\"recommend_candidate_hours\\\": number|null,\\n  \\\"recommend_profile_days\\\": number|null,\\n  \\\"recommend_explore\\\": boolean|null\\\n}\\n规则：\\n1) SEARCH: 找书、搜图、相似作品、按剧情/按画风检索。\\n2) SEARCH 的 eh 参数：默认 mixed；若用户强调“只看库内/本地库”设 internal_only；若强调“全要外网/只看外网/库外”设 external_only。\\n3) SEARCH 的 search_eh_min_results 可提取则提取，不确定填 null。\\n4) PROFILE: 用户画像/偏好分析。可提取天数（如7天、30天、最近一月、全部）；如果收到“全部”字段则按365处理。\\n5) REPORT: 日报/周报/月报/全量报告。\\n6) RECOMMEND: 用户要求推荐作品（如“按口味推荐”），并提取推荐参数，将类似'基于最近一周/x天口味'中的时间填入recommend_profile_days，当用户提到时间范围（类似查询范围，时间范围）时，将用户提到的时间转换成小时填入recommend_candidate_hours。\\n7) 其余为 CHAT。\\n8) 当字段不确定时填 null，不要瞎编。\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": $json.query\n    }\n  ],\n  \"temperature\": 0,\n  \"max_tokens\": 320\n} }}",
-        "options": {}
+        "jsCode": "const norm = $('Normalize Input').item.json;\nconst query = String(norm.query || '').trim();\n\nfunction pickRawText(payload) {\n  const roots = [];\n  if (Array.isArray(payload)) {\n    if (payload[0] && typeof payload[0] === 'object') roots.push(payload[0]);\n  } else if (payload && typeof payload === 'object') {\n    roots.push(payload);\n    if (payload.response && typeof payload.response === 'object') roots.push(payload.response);\n    if (Array.isArray(payload.data) && payload.data[0] && typeof payload.data[0] === 'object') {\n      roots.push(payload.data[0]);\n    }\n  }\n\n  for (const r of roots) {\n    // New Responses API: output_text\n    if (typeof r.output_text === 'string' && r.output_text.trim()) return r.output_text;\n\n    // New Responses API: output[].content[].text / output_text\n    if (Array.isArray(r.output)) {\n      for (const item of r.output) {\n        if (!item || typeof item !== 'object') continue;\n        if (Array.isArray(item.content)) {\n          const parts = [];\n          for (const c of item.content) {\n            if (!c || typeof c !== 'object') continue;\n            if ((c.type === 'output_text' || c.type === 'text') && typeof c.text === 'string') {\n              parts.push(c.text);\n            }\n          }\n          if (parts.length) return parts.join('');\n        }\n      }\n    }\n\n    // Old Chat Completions\n    const old = r?.choices?.[0]?.message?.content;\n    if (typeof old === 'string' && old.trim()) return old;\n  }\n\n  return '';\n}\n\nconst raw = String(pickRawText($json) || '').trim();\n\nfunction parseObj(s) {\n  if (!s) return {};\n  try { return JSON.parse(s); } catch {}\n  const m = s.match(/```(?:json)?\\s*([\\s\\S]*?)\\s*```/i);\n  if (m?.[1]) { try { return JSON.parse(m[1]); } catch {} }\n  const i = s.indexOf('{');\n  const j = s.lastIndexOf('}');\n  if (i >= 0 && j > i) { try { return JSON.parse(s.slice(i, j + 1)); } catch {} }\n  return {};\n}\nfunction n(v, d, lo, hi) {\n  const x = Number(v);\n  const y = Number.isFinite(x) ? Math.trunc(x) : d;\n  return Math.max(lo, Math.min(hi, y));\n}\nfunction b(v, d) {\n  if (typeof v === 'boolean') return v;\n  const s = String(v ?? '').toLowerCase().trim();\n  if (!s) return d;\n  if (['1','true','yes','y','on'].includes(s)) return true;\n  if (['0','false','no','n','off'].includes(s)) return false;\n  return d;\n}\nfunction inferIntent(t) {\n  const s = t.toLowerCase();\n  if (/推荐|推点|来点|suggest|recommend/.test(s)) return 'RECOMMEND';\n  if (/搜|找|相似|画风|检索|search/.test(s)) return 'SEARCH';\n  if (/画像|偏好|习惯|profile/.test(s)) return 'PROFILE';\n  if (/日报|周报|月报|报告|report/.test(s)) return 'REPORT';\n  return 'CHAT';\n}\nfunction inferCandidateHours(t) {\n  const s = t.toLowerCase();\n  const h = s.match(/(\\d{1,4})\\s*(小时|小時|h|hour|hours)/i);\n  if (h) return n(h[1], 24, 1, 24 * 365);\n  const d = s.match(/(\\d{1,3})\\s*天/);\n  if (d) return n(Number(d[1]) * 24, 24, 1, 24 * 365);\n  if (/最近一周|近一周/.test(s)) return 24 * 7;\n  if (/最近一月|近一月|一个月/.test(s)) return 24 * 30;\n  if (/最近三月|近三月/.test(s)) return 24 * 90;\n  if (/全部|所有|全量|历史|all time|all/.test(s)) return 24 * 365;\n  return 24;\n}\nfunction inferProfileDays(t) {\n  const s = t.toLowerCase();\n  const m = s.match(/(\\d{1,3})\\s*天/);\n  if (m) return n(m[1], 30, 1, 365);\n  if (/最近一周|近一周|7天/.test(s)) return 7;\n  if (/最近一月|近一月|30天|一个月/.test(s)) return 30;\n  if (/最近三月|近三月|90天|三个月/.test(s)) return 90;\n  if (/全部|所有|全量|历史|all time|all/.test(s)) return 365;\n  return 30;\n}\n\nconst p = parseObj(raw);\nconst intent = String(p.intent || inferIntent(query)).toUpperCase();\n\nif (intent === 'RECOMMEND') {\n  return [{ json: {\n    intent,\n    skillPath: '/skill/recommendation',\n    payload: {\n      k: n(p.recommend_k, 5, 1, 50),\n      candidate_hours: n(p.recommend_candidate_hours, inferCandidateHours(query), 24, 24 * 365),\n      profile_days: n(p.recommend_profile_days, inferProfileDays(query), 1, 365),\n      explore: b(p.recommend_explore, false)\n    }\n  } }];\n}\n\nif (intent === 'SEARCH') {\n  const mode = ['auto', 'plot', 'visual', 'mixed'].includes(p.search_mode) ? p.search_mode : 'auto';\n  return [{ json: { intent, skillPath: '/skill/search', payload: { query, mode, k: n(p.search_k, 10, 1, 50), model: 'your-agent-model' } } }];\n}\n\nif (intent === 'PROFILE') {\n  const target = ['reading', 'inventory'].includes(p.profile_target) ? p.profile_target : 'reading';\n  return [{ json: { intent, skillPath: '/skill/profile', payload: { target, days: n(p.profile_days, inferProfileDays(query), 1, 365), limit: 5000, use_llm: true } } }];\n}\n\nif (intent === 'REPORT') {\n  const type = ['daily', 'weekly', 'monthly', 'full'].includes(p.report_type) ? p.report_type : 'daily';\n  return [{ json: { intent, skillPath: '/skill/report', payload: { type, limit: 5000, max_events: 120, max_tokens: 1800 } } }];\n}\n\nreturn [{ json: { intent: 'CHAT', skillPath: '/skill/chat', payload: { query, model: 'your-agent-model' } } }];\n"
       },
-      "id": "4de80cf8-8685-4102-8fdc-0c8243c838ac",
-      "name": "Intent Classifier",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        3232,
-        6336
-      ],
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "const norm = $('Normalize Input').item.json;\nconst raw = String($json?.choices?.[0]?.message?.content || '').trim();\nconst query = String(norm.query || '').trim();\n\nfunction parseObj(s) {\n  if (!s) return {};\n  try { return JSON.parse(s); } catch {}\n  const m = s.match(/```(?:json)?\\s*([\\s\\S]*?)\\s*```/i);\n  if (m?.[1]) { try { return JSON.parse(m[1]); } catch {} }\n  const i = s.indexOf('{');\n  const j = s.lastIndexOf('}');\n  if (i >= 0 && j > i) { try { return JSON.parse(s.slice(i, j + 1)); } catch {} }\n  return {};\n}\nfunction n(v, d, lo, hi) {\n  const x = Number(v);\n  const y = Number.isFinite(x) ? Math.trunc(x) : d;\n  return Math.max(lo, Math.min(hi, y));\n}\nfunction b(v, d) {\n  if (typeof v === 'boolean') return v;\n  const s = String(v ?? '').toLowerCase().trim();\n  if (!s) return d;\n  if (['1','true','yes','y','on'].includes(s)) return true;\n  if (['0','false','no','n','off'].includes(s)) return false;\n  return d;\n}\nfunction inferIntent(t) {\n  const s = t.toLowerCase();\n  if (/推荐|推点|来点|suggest|recommend/.test(s)) return 'RECOMMEND';\n  if (/搜|找|相似|画风|检索|search/.test(s)) return 'SEARCH';\n  if (/画像|偏好|习惯|profile/.test(s)) return 'PROFILE';\n  if (/日报|周报|月报|报告|report/.test(s)) return 'REPORT';\n  return 'CHAT';\n}\nfunction inferCandidateHours(t) {\n  const s = t.toLowerCase();\n  const h = s.match(/(\\d{1,4})\\s*(小时|小時|h|hour|hours)/i);\n  if (h) return n(h[1], 24, 1, 24 * 365);\n  const d = s.match(/(\\d{1,3})\\s*天/);\n  if (d) return n(Number(d[1]) * 24, 24, 1, 24 * 365);\n  if (/最近一周|近一周/.test(s)) return 24 * 7;\n  if (/最近一月|近一月|一个月/.test(s)) return 24 * 30;\n  if (/最近三月|近三月/.test(s)) return 24 * 90;\n  if (/全部|所有|全量|历史|all time|all/.test(s)) return 24 * 365;\n  return 24;\n}\nfunction inferProfileDays(t) {\n  const s = t.toLowerCase();\n  const m = s.match(/(\\d{1,3})\\s*天/);\n  if (m) return n(m[1], 30, 1, 365);\n  if (/最近一周|近一周|7天/.test(s)) return 7;\n  if (/最近一月|近一月|30天|一个月/.test(s)) return 30;\n  if (/最近三月|近三月|90天|三个月/.test(s)) return 90;\n  if (/全部|所有|全量|历史|all time|all/.test(s)) return 365;\n  return 30;\n}\n\nconst p = parseObj(raw);\nconst intent = String(p.intent || inferIntent(query)).toUpperCase();\n\nif (intent === 'RECOMMEND') {\n  return [{ json: {\n    intent,\n    skillPath: '/skill/recommendation',\n    payload: {\n      k: n(p.recommend_k, 5, 1, 50),\n      candidate_hours: n(p.recommend_candidate_hours, inferCandidateHours(query), 24, 24 * 365),\n      profile_days: n(p.recommend_profile_days, inferProfileDays(query), 1, 365),\n      explore: b(p.recommend_explore, false)\n    }\n  } }];\n}\n\nif (intent === 'SEARCH') {\n  const mode = ['auto', 'plot', 'visual', 'mixed'].includes(p.search_mode) ? p.search_mode : 'auto';\n  return [{ json: { intent, skillPath: '/skill/search', payload: { query, mode, k: n(p.search_k, 10, 1, 50), model: 'qwen3-next-80b-3card' } } }];\n}\n\nif (intent === 'PROFILE') {\n  const target = ['reading', 'inventory'].includes(p.profile_target) ? p.profile_target : 'reading';\n  return [{ json: { intent, skillPath: '/skill/profile', payload: { target, days: n(p.profile_days, inferProfileDays(query), 1, 365), limit: 5000, use_llm: true } } }];\n}\n\nif (intent === 'REPORT') {\n  const type = ['daily', 'weekly', 'monthly', 'full'].includes(p.report_type) ? p.report_type : 'daily';\n  return [{ json: { intent, skillPath: '/skill/report', payload: { type, limit: 5000, max_events: 120, max_tokens: 1800 } } }];\n}\n\nreturn [{ json: { intent: 'CHAT', skillPath: '/skill/chat', payload: { query, model: 'qwen3-next-80b-3card' } } }];"
-      },
-      "id": "5cfc169f-0ed2-4f43-9d56-48e5fe966f05",
+      "id": "faf209b1-2e81-4e26-b98d-33b17a397cd0",
       "name": "Build Text Skill Request V2",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -137,7 +118,7 @@
       "parameters": {
         "jsCode": "const norm = $('Normalize Input').item.json || {};\nconst q = String(norm.query || '').trim().toLowerCase();\nconst out = { ...($json || {}) };\nout.payload = { ...(out.payload || {}) };\n\nfunction n(v, d, lo, hi) {\n  const x = Number(v);\n  const y = Number.isFinite(x) ? Math.trunc(x) : d;\n  return Math.max(lo, Math.min(hi, y));\n}\n\nfunction inferEhScope(text) {\n  if (/只看库内|仅库内|库内就行|本地库|只看本地|only internal|only local/.test(text)) return 'internal_only';\n  if (/只看外网|仅外网|全要外网|全都外网|库外|站外|only external|external only/.test(text)) return 'external_only';\n  return 'mixed';\n}\n\nfunction inferEhMin(scope, k) {\n  if (scope === 'internal_only') return 0;\n  if (scope === 'external_only') return k;\n  return Math.min(3, k);\n}\n\n// Keep original intent/skill path. Never rewrite RECOMMEND to SEARCH here.\nif (out.skillPath === '/skill/search') {\n  const k = n(out.payload.k, 10, 1, 50);\n  const scopeRaw = String(out.payload.search_eh_scope || '').toLowerCase();\n  const scope = ['mixed', 'external_only', 'internal_only'].includes(scopeRaw) ? scopeRaw : inferEhScope(q);\n  out.payload.k = k;\n  out.payload.eh_min_results = n(out.payload.eh_min_results, inferEhMin(scope, k), 0, k);\n}\n\nreturn [{ json: out }];"
       },
-      "id": "99555b29-3aa5-4a8d-bf39-7ff8e6c2c984",
+      "id": "7d3b1dc8-f8e8-4200-9026-44838ce10ee3",
       "name": "Apply Search Eh Policy",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -148,7 +129,7 @@
     },
     {
       "parameters": {},
-      "id": "a0914dfc-1877-41e2-8e1d-708cbfc4d4f8",
+      "id": "e1385e5a-95a0-4515-9890-da3977f1007e",
       "name": "Merge Skill Requests",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
@@ -160,7 +141,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ 'http://{your_hunterAgent_url:port}' + $json.skillPath }}",
+        "url": "={{ '{compute node ip:port}' + $json.skillPath }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json.payload }}",
@@ -168,8 +149,8 @@
           "timeout": 60000
         }
       },
-      "id": "4200e52a-49bd-453a-b8a8-fde1b7667caf",
-      "name": "Call hunterAgent Skill",
+      "id": "b1dc801a-ea76-4c91-a897-0f5e71eaf6c3",
+      "name": "Call tr_agent Skill",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
@@ -182,7 +163,7 @@
       "parameters": {
         "jsCode": "const tool = $json || {};\nconst data = tool.data || {};\n\nconst intent = String(data.intent || tool.skill || \"\").toUpperCase().trim();\nconst rawNarrative = String(data.narrative || data.response || \"\").trim();\nconst rawResults = Array.isArray(data.results) ? data.results : [];\n\n// ---------- helpers ----------\nfunction esc(s) {\n  return String(s || \"\")\n    .replace(/&/g, \"&amp;\")\n    .replace(/</g, \"&lt;\")\n    .replace(/>/g, \"&gt;\");\n}\n\nfunction okUrl(u) {\n  const s = String(u || \"\").trim();\n  return /^https?:\\/\\//i.test(s) ? s : \"\";\n}\n\n// 将少量 markdown 转成 HTML；处理不了的符号就删\nfunction markdownToHtml(input) {\n  let s = String(input || \"\");\n\n  s = s.replace(/^\\s*###\\s+(.+)$/gm, \"<b>$1</b>\");\n  s = s.replace(/^\\s*##\\s+(.+)$/gm, \"<b>$1</b>\");\n  s = s.replace(/^\\s*#\\s+(.+)$/gm, \"<b>$1</b>\");\n\n  s = s.replace(/\\*\\*(.+?)\\*\\*/g, \"<b>$1</b>\");\n  s = s.replace(/(^|[\\s(])\\*(?!\\*)([^*\\n]+)\\*(?=$|[\\s).,!?:;])/g, \"$1<i>$2</i>\");\n  s = s.replace(/(^|[\\s(])_([^_\\n]+)_(?=$|[\\s).,!?:;])/g, \"$1<i>$2</i>\");\n  s = s.replace(/`([^`\\n]+)`/g, \"<code>$1</code>\");\n\n  s = s.replace(/```/g, \"\");\n  s = s.replace(/\\*\\*/g, \"\");\n  s = s.replace(/__/g, \"\");\n  s = s.replace(/~~/g, \"\");\n  s = s.replace(/\\|\\|/g, \"\");\n\n  return s;\n}\n\n// 过滤无意义 tag（如 date_added:unix）\nfunction cleanTags(tags, tagsTranslated) {\n  const t1 = Array.isArray(tags) ? tags : [];\n  const t2 = Array.isArray(tagsTranslated) ? tagsTranslated : [];\n\n  const banned = /^(date_added:\\d+|posted:\\d+|lastreadtime:\\d+)$/i;\n  const badKey = /^(date_added|posted|lastreadtime)\\s*:/i;\n\n  const filterOne = (arr) =>\n    arr\n      .map((x) => String(x || \"\").trim())\n      .filter(Boolean)\n      .filter((x) => !banned.test(x))\n      .filter((x) => !badKey.test(x));\n\n  return {\n    tags: filterOne(t1),\n    tagsTranslated: filterOne(t2),\n  };\n}\n\n// ---------- normalize ----------\nconst items = rawResults.map((r, idx) => {\n  const source = String(r?.source || \"works\").trim() === \"eh_works\" ? \"eh_works\" : \"works\";\n  const title = String(r?.title || \"\").trim() || \"未命名作品\";\n  const rank = Number.isFinite(Number(r?.rank))\n    ? Math.max(1, Math.trunc(Number(r.rank)))\n    : idx + 1;\n\n  const readerUrl = okUrl(r?.reader_url);\n  const ehUrl = okUrl(r?.eh_url);\n  const exUrl = okUrl(r?.ex_url);\n\n  const cleaned = cleanTags(r?.tags, r?.tags_translated);\n\n  return {\n    source,\n    title,\n    rank,\n    reader_url: readerUrl,\n    eh_url: ehUrl,\n    ex_url: exUrl,\n    tags: cleaned.tags,\n    tags_translated: cleaned.tagsTranslated,\n  };\n});\n\nconst works = items.filter((x) => x.source === \"works\").sort((a, b) => a.rank - b.rank);\nconst eh = items.filter((x) => x.source === \"eh_works\").sort((a, b) => a.rank - b.rank);\n\n// ---------- render ----------\nfunction renderSection(title, list, isExternal) {\n  const lines = [`<b>${esc(title)}</b>`];\n\n  if (!list.length) {\n    lines.push(\"暂无\");\n    return lines.join(\"\\n\");\n  }\n\n  for (let i = 0; i < list.length; i++) {\n    const it = list[i];\n    lines.push(`${i + 1}. ${esc(it.title)}`);\n\n    // 新版兼容逻辑：\n    // - 库内优先：阅读器 | EH | EX（有啥放啥）\n    // - 库外优先：EH | EX | 阅读器（有啥放啥）\n    const links = [];\n    if (!isExternal) {\n      if (it.reader_url) links.push(`<a href=\"${it.reader_url}\">阅读器</a>`);\n      if (it.eh_url) links.push(`<a href=\"${it.eh_url}\">EH</a>`);\n      if (it.ex_url) links.push(`<a href=\"${it.ex_url}\">EX</a>`);\n    } else {\n      if (it.eh_url) links.push(`<a href=\"${it.eh_url}\">EH</a>`);\n      if (it.ex_url) links.push(`<a href=\"${it.ex_url}\">EX</a>`);\n      if (it.reader_url) links.push(`<a href=\"${it.reader_url}\">阅读器</a>`);\n    }\n\n    if (links.length) lines.push(links.join(\" | \"));\n\n    const tagLine = it.tags_translated.length\n      ? it.tags_translated.slice(0, 6).join(\", \")\n      : it.tags.slice(0, 6).join(\", \");\n    if (tagLine) lines.push(`标签: ${esc(tagLine)}`);\n  }\n\n  return lines.join(\"\\n\");\n}\n\nconst narrativeHtml = markdownToHtml(esc(rawNarrative));\nconst blocks = [];\n\nif (intent) blocks.push(`<b>${esc(intent)}</b>`);\nif (narrativeHtml) blocks.push(narrativeHtml);\nblocks.push(renderSection(\"库内结果\", works, false));\nblocks.push(renderSection(\"库外结果\", eh, true));\n\nconst html_text = blocks.join(\"\\n\\n\").trim();\n\nreturn [\n  {\n    json: {\n      html_text: html_text || \"暂无可用结果。\",\n      metadata_items: items,\n      response: rawNarrative || \"\",\n    },\n  },\n];\n"
       },
-      "id": "1975ed52-ac94-4d4e-b361-fcd29a1ce954",
+      "id": "c870efb7-32a5-4cb5-a0bb-ca56a8b64324",
       "name": "Prepare Tool Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -201,7 +182,7 @@
         4352,
         6336
       ],
-      "id": "0fe12ece-8084-4250-86c6-5e0fff146d84",
+      "id": "562856a5-a7c6-4283-b38f-85692ba0a6f6",
       "name": "Prepare HTML Response"
     },
     {
@@ -213,7 +194,7 @@
           "parse_mode": "HTML"
         }
       },
-      "id": "4ef8a328-1e4e-4a80-acfc-ae627920174c",
+      "id": "27aab26f-8576-4d01-a5e8-5087e3511796",
       "name": "Reply Telegram",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.1,
@@ -221,13 +202,50 @@
         4384,
         6528
       ],
-      "webhookId": "e0cc2cec-893a-44b3-85f3-ed3d991b0a78",
+      "webhookId": "REDACTED",
       "credentials": {
         "telegramApi": {
-          "id": "AywKFrrnC7AWpSjG",
+          "id": "",
           "name": "Telegram account"
         }
       }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "=your-agent-model",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "={{$json.query}}"
+            }
+          ]
+        },
+        "simplify": false,
+        "builtInTools": {},
+        "options": {
+          "instructions": "你是意图与参数提取器。请根据用户文本输出一个JSON对象，不要输出任何额外文字。\\nJSON schema:\\n{\\n  \\\"intent\\\": \\\"SEARCH|PROFILE|REPORT|RECOMMEND|CHAT\\\",\\n  \\\"search_mode\\\": \\\"auto|plot|visual|mixed|null\\\",\\n  \\\"search_k\\\": number|null,\\n  \\\"search_eh_scope\\\": \\\"mixed|external_only|internal_only|null\\\",\\n  \\\"search_eh_min_results\\\": number|null,\\n  \\\"profile_days\\\": number|null,\\n  \\\"profile_target\\\": \\\"reading|inventory|null\\\",\\n  \\\"report_type\\\": \\\"daily|weekly|monthly|full|null\\\",\\n  \\\"recommend_k\\\": number|null,\\n  \\\"recommend_candidate_hours\\\": number|null,\\n  \\\"recommend_profile_days\\\": number|null,\\n  \\\"recommend_explore\\\": boolean|null\\\n}\\n规则：\\n1) SEARCH: 找书、搜图、相似作品、按剧情/按画风检索。\\n2) SEARCH 的 eh 参数：默认 mixed；若用户强调“只看库内/本地库”设 internal_only；若强调“全要外网/只看外网/库外”设 external_only。\\n3) SEARCH 的 search_eh_min_results 可提取则提取，不确定填 null。\\n4) PROFILE: 用户画像/偏好分析。可提取天数（如7天、30天、最近一月、全部）；如果收到“全部”字段则按365处理。\\n5) REPORT: 日报/周报/月报/全量报告。\\n6) RECOMMEND: 用户要求推荐作品（如“按口味推荐”），并提取推荐参数，将类似'基于最近一周/x天口味'中的时间填入recommend_profile_days，当用户提到时间范围（类似查询范围，时间范围）时，将用户提到的时间转换成小时填入recommend_candidate_hours。\\n7) 其余为 CHAT。\\n8) 当字段不确定时填 null，不要瞎编。"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        3216,
+        6336
+      ],
+      "id": "17cb2e2b-0a7c-4521-af62-9e09a3bfa50e",
+      "name": "Intent Classifier",
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "pinData": {},
@@ -314,17 +332,6 @@
         ]
       ]
     },
-    "Intent Classifier": {
-      "main": [
-        [
-          {
-            "node": "Build Text Skill Request V2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Build Text Skill Request V2": {
       "main": [
         [
@@ -340,14 +347,14 @@
       "main": [
         [
           {
-            "node": "Call hunterAgent Skill",
+            "node": "Call tr_agent Skill",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Call hunterAgent Skill": {
+    "Call tr_agent Skill": {
       "main": [
         [
           {
@@ -379,6 +386,17 @@
           }
         ]
       ]
+    },
+    "Intent Classifier": {
+      "main": [
+        [
+          {
+            "node": "Build Text Skill Request V2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -386,11 +404,11 @@
     "executionOrder": "v1",
     "availableInMCP": false
   },
-  "versionId": "0802102b-ff06-4a8f-9573-5609118d6964",
+  "versionId": "4bd456b7-b7b8-4f79-8b4e-fbe5938d604c",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "5bf19a74d8964d91b75d85d9e94031caa849d26436907eb17001f943a52887d6"
+    "instanceId": "REDACTED"
   },
-  "id": "ySjGNtx8FwazwA0I",
+  "id": "N3mHw3lp4U0yM3uI",
   "tags": []
 }
