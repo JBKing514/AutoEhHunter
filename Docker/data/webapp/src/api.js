@@ -48,7 +48,7 @@ export async function getTasks() {
 export async function getAuditHistory(params = {}) {
   const { data } = await api.get("/audit/history", {
     params: {
-      limit: 300,
+      limit: 15,
       offset: 0,
       task: "",
       status: "",
@@ -83,5 +83,55 @@ export async function getAuditLogTail(name, offset = 0, chunkSize = 8000) {
 
 export async function getXpMap(params) {
   const { data } = await api.get("/xp-map", { params });
+  return data;
+}
+
+export async function getHomeHistory(params = {}) {
+  const { data } = await api.get("/home/history", { params });
+  return data;
+}
+
+export async function getHomeRecommend(params = {}) {
+  const { data } = await api.get("/home/recommend", { params });
+  return data;
+}
+
+export async function searchByImage(payload = {}) {
+  const { data } = await api.post("/home/search/image", payload);
+  return data;
+}
+
+export async function searchByTextPlaceholder(payload = {}) {
+  const { data } = await api.post("/home/search/text", payload);
+  return data;
+}
+
+export async function searchHybridPlaceholder(payload = {}) {
+  const { data } = await api.post("/home/search/hybrid", payload);
+  return data;
+}
+
+export async function getThumbCacheStats() {
+  const { data } = await api.get("/cache/thumbs");
+  return data;
+}
+
+export async function clearThumbCache() {
+  const { data } = await api.delete("/cache/thumbs");
+  return data;
+}
+
+export async function getTranslationStatus() {
+  const { data } = await api.get("/translation/status");
+  return data;
+}
+
+export async function uploadTranslationFile(file) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post("/translation/upload", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000,
+  });
   return data;
 }

@@ -8,7 +8,8 @@ This image packages data-plane scripts:
 - `lrrDataFlush/run_daily_lrr_export.sh`
 - `textIngest/ingest_jsonl_to_postgres.py`
 - `textIngest/run_daily_text_ingest.sh`
-- `webui/app.py` (Streamlit)
+- `webapi/main.py` (FastAPI backend for Data UI)
+- `webapp/` (Vue frontend for Data UI)
 
 ## 1) Prepare env
 
@@ -42,7 +43,7 @@ docker exec -it autoeh-data /app/lrrDataFlush/run_daily_lrr_export.sh
 docker exec -it autoeh-data /app/textIngest/run_daily_text_ingest.sh
 ```
 
-Run Streamlit UI from the same image:
+Run Data UI from the same image:
 
 ```bash
 docker run -d \

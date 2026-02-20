@@ -10,3 +10,4 @@ scikit-learn>=1.5.0
 scipy>=1.12.0
 numpy>=1.26.0
 cryptography>=42.0.0
+python-multipart
