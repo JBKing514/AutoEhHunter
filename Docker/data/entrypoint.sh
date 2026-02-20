@@ -12,7 +12,7 @@ Commands:
   lrr-export-daily     Run metadata + recent reads export workflow
   text-ingest          Ingest JSONL into Postgres
   text-ingest-daily    Run text ingest workflow using env-configured inputs
-  data-ui              Start Streamlit data web UI
+  data-ui              Start Vue + FastAPI web UI
   shell                Open bash shell
   help                 Show this help
 
@@ -110,7 +110,7 @@ case "$cmd" in
     exec /app/textIngest/run_daily_text_ingest.sh "$@"
     ;;
   data-ui)
-    exec streamlit run /app/webui/app.py --server.address 0.0.0.0 --server.port "${DATA_UI_PORT:-8501}"
+    exec uvicorn webapi.main:app --host 0.0.0.0 --port "${DATA_UI_PORT:-8501}"
     ;;
   shell)
     exec /bin/bash "$@"

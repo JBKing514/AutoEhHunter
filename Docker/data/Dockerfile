@@ -1,3 +1,12 @@
+FROM node:20-bookworm-slim AS webbuild
+
+WORKDIR /webapp
+COPY data/webapp/package.json /webapp/package.json
+COPY data/webapp/index.html /webapp/index.html
+COPY data/webapp/vite.config.js /webapp/vite.config.js
+COPY data/webapp/src /webapp/src
+RUN npm install --no-audit --no-fund && npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -19,6 +28,8 @@ COPY data/ehCrawler /app/ehCrawler
 COPY data/lrrDataFlush /app/lrrDataFlush
 COPY data/textIngest /app/textIngest
 COPY data/webui /app/webui
+COPY data/webapi /app/webapi
+COPY --from=webbuild /webapp/dist /app/webapi/static
 
 RUN python -m pip install --upgrade pip && \
     python -m pip install -r /app/requirements.txt
