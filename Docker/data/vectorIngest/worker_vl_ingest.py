@@ -595,6 +595,11 @@ def _make_vlm_messages_data_url(
     return [{"role": "user", "content": parts}]
 
 
+def _need_base64_data_url(exc: Exception) -> bool:
+    s = str(exc).lower()
+    return "base64 encoded image" in s and "url" in s
+
+
 def _page_filename_from_url(page_url: str) -> str:
     """Extract archive page filename from LANraragi page URL.
 
@@ -730,8 +735,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--vl-image-mode",
         choices=["file", "data_url"],
-        default=os.getenv("VL_IMAGE_MODE", "file"),
-        help="How to send images to the VLM server (default: file)",
+        default=os.getenv("VL_IMAGE_MODE", "data_url"),
+        help="How to send images to the VLM server (default: data_url)",
     )
     ap.add_argument(
         "--vl-normalize-jpeg",
@@ -1014,7 +1019,27 @@ def main(argv: list[str]) -> int:
                             raise RuntimeError("Empty description")
                         semantic = emb.embeddings(model=args.emb_model, text=description)
                     except Exception as e:
-                        if args.auto_fallback_siglip_only:
+                        if args.vl_image_mode == "file" and _need_base64_data_url(e):
+                            try:
+                                messages = _make_vlm_messages_data_url(instruction, blobs)
+                                description = vl.chat_completions(
+                                    model=args.vl_model,
+                                    messages=messages,
+                                    temperature=0.2,
+                                    max_tokens=900,
+                                ).strip()
+                                if not description:
+                                    raise RuntimeError("Empty description")
+                                semantic = emb.embeddings(model=args.emb_model, text=description)
+                                print(f"INFO {arcid}: switched to data_url mode for LM Studio compatibility")
+                            except Exception as e2:
+                                e = e2
+                            else:
+                                # recovered by base64 data_url fallback
+                                pass
+                        if description and semantic:
+                            pass
+                        elif args.auto_fallback_siglip_only:
                             use_text_pipeline = False
                             description = ""
                             semantic = []

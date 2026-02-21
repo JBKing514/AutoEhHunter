@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 import base64
 import hashlib
+import importlib.util
+import io
 import json
 import math
 import os
 import re
+import shlex
 import shutil
+import site
 import subprocess
+import sys
 import threading
 import time
 import uuid
+from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,7 +29,7 @@ import requests_unixsocket
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from cryptography.fernet import Fernet, InvalidToken
-from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -53,7 +59,7 @@ DEFAULT_SCHEDULE = {
     "eh_fetch": {"enabled": False, "cron": "*/30 * * * *"},
     "lrr_export": {"enabled": False, "cron": "0 * * * *"},
     "text_ingest": {"enabled": False, "cron": "5 * * * *"},
-    "compute_daily": {"enabled": False, "cron": "10 * * * *"},
+    "eh_lrr_ingest": {"enabled": False, "cron": "10 * * * *"},
 }
 
 CONFIG_SPECS: dict[str, dict[str, Any]] = {
@@ -91,6 +97,8 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "SEARCH_VISUAL_WEIGHT": {"type": "float", "default": 0.4, "min": 0.0, "max": 1.0},
     "SEARCH_MIXED_TEXT_WEIGHT": {"type": "float", "default": 0.5, "min": 0.0, "max": 1.0},
     "SEARCH_MIXED_VISUAL_WEIGHT": {"type": "float", "default": 0.5, "min": 0.0, "max": 1.0},
+    "SEARCH_FORCE_LLM": {"type": "bool", "default": False},
+    "SEARCH_TAG_FUZZY_THRESHOLD": {"type": "float", "default": 0.62, "min": 0.2, "max": 1.0},
     "TEXT_INGEST_PRUNE_NOT_SEEN": {"type": "bool", "default": True},
     "WORKER_ONLY_MISSING": {"type": "bool", "default": True},
     "LRR_READS_HOURS": {"type": "int", "default": 24, "min": 1, "max": 720},
@@ -111,10 +119,10 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "EMB_API_BASE": {"type": "url", "default": "http://llm-router:8000/v1"},
     "EMB_API_KEY": {"type": "text", "default": "", "secret": True},
     "EMB_MODEL": {"type": "text", "default": "bge-m3"},
-    "VL_BASE": {"type": "url", "default": "http://vl-server:8002"},
-    "EMB_BASE": {"type": "url", "default": "http://emb-server:8001"},
-    "VL_MODEL_ID": {"type": "text", "default": "vl"},
-    "EMB_MODEL_ID": {"type": "text", "default": "bge-m3"},
+    "VL_BASE": {"type": "url", "default": ""},
+    "EMB_BASE": {"type": "url", "default": ""},
+    "VL_MODEL_ID": {"type": "text", "default": ""},
+    "EMB_MODEL_ID": {"type": "text", "default": ""},
     "SIGLIP_MODEL": {"type": "text", "default": "google/siglip-so400m-patch14-384"},
     "SIGLIP_DEVICE": {"type": "text", "default": "cpu"},
     "WORKER_BATCH": {"type": "int", "default": 32, "min": 1, "max": 512},
@@ -175,7 +183,15 @@ TASK_COMMANDS = {
     "eh_fetch": ["/app/ehCrawler/run_eh_fetch.sh"],
     "lrr_export": ["/app/lrrDataFlush/run_daily_lrr_export.sh"],
     "text_ingest": ["/app/textIngest/run_daily_text_ingest.sh"],
-    "compute_daily": ["__compute_daily__"],
+    "eh_ingest": ["__eh_ingest__"],
+    "lrr_ingest": ["__lrr_ingest__"],
+    "eh_lrr_ingest": ["__eh_lrr_ingest__"],
+}
+
+LEGACY_TASK_ALIASES = {
+    "compute_daily": "eh_lrr_ingest",
+    "compute_worker": "lrr_ingest",
+    "compute_eh_ingest": "eh_ingest",
 }
 
 def _valid_timezone(name: str) -> str:
@@ -231,6 +247,39 @@ class HomeImageSearchRequest(BaseModel):
     token: str = ""
     scope: str = "both"
     limit: int = 24
+    include_categories: list[str] = []
+    include_tags: list[str] = []
+
+
+class HomeTextSearchRequest(BaseModel):
+    query: str = ""
+    scope: str = "both"
+    limit: int = 24
+    use_llm: bool = False
+    include_categories: list[str] = []
+    include_tags: list[str] = []
+
+
+class HomeHybridSearchRequest(BaseModel):
+    query: str = ""
+    arcid: str = ""
+    gid: int | None = None
+    token: str = ""
+    scope: str = "both"
+    limit: int = 24
+    text_weight: float | None = None
+    visual_weight: float | None = None
+    use_llm: bool = False
+    include_categories: list[str] = []
+    include_tags: list[str] = []
+
+
+class ChatMessageRequest(BaseModel):
+    session_id: str = "default"
+    text: str = ""
+    image_arcid: str = ""
+    mode: str = "chat"
+    context: dict[str, Any] | None = None
 
 
 def ensure_dirs() -> None:
@@ -238,6 +287,8 @@ def ensure_dirs() -> None:
     TASK_LOG_DIR.mkdir(parents=True, exist_ok=True)
     THUMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     TRANSLATION_DIR.mkdir(parents=True, exist_ok=True)
+    (_models_root() / "pydeps").mkdir(parents=True, exist_ok=True)
+    (_models_root() / "pip_cache").mkdir(parents=True, exist_ok=True)
 
 
 def _thumb_cache_file(key: str) -> Path:
@@ -299,6 +350,276 @@ def _clear_thumb_cache() -> dict[str, Any]:
         except Exception:
             continue
     return {"deleted": deleted, "freed_bytes": freed, "freed_mb": round(freed / (1024 * 1024), 2)}
+
+
+def _models_root() -> Path:
+    p = RUNTIME_DIR / "models"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _siglip_root() -> Path:
+    p = _models_root() / "siglip"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _folder_size_bytes(root: Path) -> int:
+    if not root.exists():
+        return 0
+    total = 0
+    for p in root.rglob("*"):
+        if p.is_file():
+            try:
+                total += int(p.stat().st_size)
+            except Exception:
+                continue
+    return total
+
+
+def _model_status() -> dict[str, Any]:
+    siglip_dir = _siglip_root()
+    sz = _folder_size_bytes(siglip_dir)
+    config_exists = any((siglip_dir / "models--google--siglip-so400m-patch14-384").rglob("config.json")) if siglip_dir.exists() else False
+    blobs_count = len(list(siglip_dir.rglob("blobs/*"))) if siglip_dir.exists() else 0
+    pydeps_dir = _runtime_pydeps_dir()
+    pydeps_sz = _folder_size_bytes(pydeps_dir)
+    _ensure_runtime_pydeps_path()
+    deps_ok = all(importlib.util.find_spec(m) is not None for m in ["PIL", "torch", "transformers", "numpy"])
+    return {
+        "siglip": {
+            "path": str(siglip_dir),
+            "exists": siglip_dir.exists(),
+            "size_bytes": sz,
+            "size_mb": round(sz / (1024 * 1024), 2),
+            "usable": bool(config_exists and blobs_count > 0 and sz > 50 * 1024 * 1024),
+            "blobs": blobs_count,
+        },
+        "runtime_deps": {
+            "path": str(pydeps_dir),
+            "size_mb": round(pydeps_sz / (1024 * 1024), 2),
+            "ready": deps_ok,
+        },
+    }
+
+
+def _run_cmd(cmd: list[str], env_extra: dict[str, str] | None = None, timeout: int = 3600) -> tuple[int, str, str]:
+    env = dict(os.environ)
+    if env_extra:
+        env.update({k: str(v) for k, v in env_extra.items()})
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+    return int(p.returncode), str(p.stdout or ""), str(p.stderr or "")
+
+
+def _runtime_pydeps_dir() -> Path:
+    p = _models_root() / "pydeps"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _runtime_pip_cache_dir() -> Path:
+    p = _models_root() / "pip_cache"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _ensure_runtime_pydeps_path() -> None:
+    p = _runtime_pydeps_dir()
+    s = str(p)
+    if s not in sys.path:
+        sys.path.insert(0, s)
+    try:
+        site.addsitedir(s)
+    except Exception:
+        pass
+
+
+def _siglip_env_extra() -> dict[str, str]:
+    pydeps = str(_runtime_pydeps_dir())
+    base_py = str(os.environ.get("PYTHONPATH") or "")
+    py_path = f"{pydeps}{os.pathsep}{base_py}" if base_py else pydeps
+    return {
+        "HF_HOME": str(_models_root() / "hf_cache"),
+        "TRANSFORMERS_CACHE": str(_models_root() / "hf_cache"),
+        "PIP_CACHE_DIR": str(_runtime_pip_cache_dir()),
+        "PYTHONPATH": py_path,
+    }
+
+
+def _siglip_pip_cmds() -> list[list[str]]:
+    target = str(_runtime_pydeps_dir())
+    cmds: list[list[str]] = []
+
+    # 1) torch from CPU index only (CPU mode)
+    torch_cmd = [sys.executable, "-m", "pip", "install", "--target", target]
+    torch_cmd.extend(["--index-url", "https://download.pytorch.org/whl/cpu"])
+    torch_cmd.append("torch")
+    cmds.append(torch_cmd)
+
+    # 2) non-torch deps from default PyPI
+    deps_cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--target",
+        target,
+        "numpy",
+        "transformers",
+        "sentencepiece",
+        "protobuf",
+        "pillow",
+    ]
+    cmds.append(deps_cmd)
+    return cmds
+
+
+def _run_siglip_pip_cmds(cmds: list[list[str]], env_extra: dict[str, str], timeout: int = 7200) -> tuple[int, str, str]:
+    all_out: list[str] = []
+    all_err: list[str] = []
+    for cmd in cmds:
+        rc, out, err = _run_cmd(cmd, env_extra=env_extra, timeout=timeout)
+        if out:
+            all_out.append(out)
+        if err:
+            all_err.append(err)
+        if rc != 0:
+            return rc, "\n".join(all_out), "\n".join(all_err)
+    return 0, "\n".join(all_out), "\n".join(all_err)
+
+
+def _ensure_siglip_runtime_deps() -> None:
+    _ensure_runtime_pydeps_path()
+    need = ["PIL", "torch", "transformers", "numpy"]
+    missing = [m for m in need if importlib.util.find_spec(m) is None]
+    if not missing:
+        return
+    env_extra = _siglip_env_extra()
+    pip_cmds = _siglip_pip_cmds()
+    rc, out, err = _run_siglip_pip_cmds(pip_cmds, env_extra=env_extra, timeout=7200)
+    if rc != 0:
+        raise RuntimeError(f"pip install failed for siglip runtime deps: {err or out}")
+    _ensure_runtime_pydeps_path()
+
+
+def _install_siglip_runtime(model_id: str) -> dict[str, Any]:
+    siglip_dir = _siglip_root()
+    env_extra = _siglip_env_extra()
+    pip_cmds = _siglip_pip_cmds()
+    rc, out, err = _run_siglip_pip_cmds(pip_cmds, env_extra=env_extra, timeout=7200)
+    if rc != 0:
+        raise RuntimeError(f"pip install failed: {err or out}")
+    py_code = (
+        "from transformers import AutoProcessor, AutoModel; "
+        f"AutoProcessor.from_pretrained('{model_id}', cache_dir=r'{siglip_dir.as_posix()}'); "
+        f"AutoModel.from_pretrained('{model_id}', cache_dir=r'{siglip_dir.as_posix()}'); "
+        "print('ok')"
+    )
+    rc2, out2, err2 = _run_cmd([sys.executable, "-c", py_code], env_extra=env_extra, timeout=7200)
+    if rc2 != 0:
+        raise RuntimeError(f"siglip download failed: {err2 or out2}")
+    return _model_status()
+
+
+def _set_dl_state(task_id: str, patch: dict[str, Any]) -> None:
+    with _model_dl_lock:
+        base = dict(_model_dl_state.get(task_id) or {})
+        base.update(patch)
+        _model_dl_state[task_id] = base
+
+
+def _append_dl_log(task_id: str, line: str) -> None:
+    with _model_dl_lock:
+        st = dict(_model_dl_state.get(task_id) or {})
+        logs = list(st.get("logs") or [])
+        logs.append(str(line))
+        st["logs"] = logs[-200:]
+        _model_dl_state[task_id] = st
+
+
+def _download_siglip_worker(task_id: str, model_id: str) -> None:
+    try:
+        _set_dl_state(task_id, {"status": "running", "progress": 5, "stage": "install_deps", "started_at": now_iso()})
+        siglip_dir = _siglip_root()
+        env_extra = _siglip_env_extra()
+        env_extra["HF_HUB_DISABLE_TELEMETRY"] = "1"
+        pip_cmds = _siglip_pip_cmds()
+        rc, out, err = _run_siglip_pip_cmds(pip_cmds, env_extra=env_extra, timeout=7200)
+        _append_dl_log(task_id, out[-1200:] if out else "")
+        _append_dl_log(task_id, err[-1200:] if err else "")
+        if rc != 0:
+            raise RuntimeError(f"pip install failed: {err or out}")
+
+        _set_dl_state(task_id, {"progress": 45, "stage": "download_processor"})
+        py_p = (
+            "from transformers import AutoProcessor; "
+            f"AutoProcessor.from_pretrained('{model_id}', cache_dir=r'{siglip_dir.as_posix()}'); print('processor_ok')"
+        )
+        rc_p, out_p, err_p = _run_cmd([sys.executable, "-c", py_p], env_extra=env_extra, timeout=7200)
+        _append_dl_log(task_id, out_p[-1200:] if out_p else "")
+        _append_dl_log(task_id, err_p[-1200:] if err_p else "")
+        if rc_p != 0:
+            raise RuntimeError(f"processor download failed: {err_p or out_p}")
+
+        _set_dl_state(task_id, {"progress": 70, "stage": "download_model"})
+        py_m = (
+            "from transformers import AutoModel; "
+            f"AutoModel.from_pretrained('{model_id}', cache_dir=r'{siglip_dir.as_posix()}'); print('model_ok')"
+        )
+        rc_m, out_m, err_m = _run_cmd([sys.executable, "-c", py_m], env_extra=env_extra, timeout=7200)
+        _append_dl_log(task_id, out_m[-1200:] if out_m else "")
+        _append_dl_log(task_id, err_m[-1200:] if err_m else "")
+        if rc_m != 0:
+            raise RuntimeError(f"model download failed: {err_m or out_m}")
+
+        status = _model_status()
+        usable = bool(((status.get("siglip") or {}).get("usable")))
+        _set_dl_state(
+            task_id,
+            {
+                "status": "done" if usable else "failed",
+                "progress": 100 if usable else 95,
+                "stage": "completed" if usable else "verify_failed",
+                "error": "" if usable else "download finished but model not marked usable",
+                "finished_at": now_iso(),
+                "model_status": status,
+            },
+        )
+    except Exception as e:
+        _set_dl_state(task_id, {"status": "failed", "stage": "error", "error": str(e), "finished_at": now_iso()})
+
+
+def _clear_siglip_runtime() -> dict[str, Any]:
+    siglip_dir = _siglip_root()
+    before = _folder_size_bytes(siglip_dir)
+    if siglip_dir.exists():
+        shutil.rmtree(siglip_dir, ignore_errors=True)
+    siglip_dir.mkdir(parents=True, exist_ok=True)
+    return {
+        "ok": True,
+        "freed_bytes": before,
+        "freed_mb": round(before / (1024 * 1024), 2),
+        "status": _model_status(),
+    }
+
+
+def _clear_runtime_pydeps() -> dict[str, Any]:
+    p = _runtime_pydeps_dir()
+    before = _folder_size_bytes(p)
+    if p.exists():
+        shutil.rmtree(p, ignore_errors=True)
+    p.mkdir(parents=True, exist_ok=True)
+    return {"ok": True, "freed_bytes": before, "freed_mb": round(before / (1024 * 1024), 2), "status": _model_status()}
+
+
+def _chat_bucket(session_id: str) -> dict[str, Any]:
+    sid = str(session_id or "default").strip() or "default"
+    with _chat_mem_lock:
+        b = _chat_mem.get(sid)
+        if b is None:
+            b = {"messages": [], "facts": []}
+            _chat_mem[sid] = b
+        return b
 
 
 def now_iso() -> str:
@@ -527,6 +848,8 @@ def resolve_config() -> tuple[dict[str, str], dict[str, Any]]:
         db_vals.update(_parse_dsn_components(db_vals["POSTGRES_DSN"]))
     merged.update(db_vals)
     merged["POSTGRES_DSN"] = _build_dsn(merged)
+    # CPU-only runtime policy for SigLIP in data node.
+    merged["SIGLIP_DEVICE"] = "cpu"
     meta = {
         "db_connected": bool(merged.get("POSTGRES_DSN", "")) and not db_error,
         "db_error": db_error,
@@ -543,6 +866,12 @@ def build_runtime_env() -> dict[str, str]:
         if val:
             env[key] = val
     env["POSTGRES_DSN"] = cfg.get("POSTGRES_DSN", "")
+    pydeps = str(_runtime_pydeps_dir())
+    base_py = str(env.get("PYTHONPATH") or "")
+    env["PYTHONPATH"] = f"{pydeps}{os.pathsep}{base_py}" if base_py else pydeps
+    env["HF_HOME"] = str(_models_root() / "hf_cache")
+    env["TRANSFORMERS_CACHE"] = str(_models_root() / "hf_cache")
+    env["PIP_CACHE_DIR"] = str(_runtime_pip_cache_dir())
     return env
 
 
@@ -702,7 +1031,10 @@ def _normalize_schedule(data: dict[str, Any] | None) -> dict[str, Any]:
     merged = dict(DEFAULT_SCHEDULE)
     src = data if isinstance(data, dict) else {}
     for key in merged:
-        item = src.get(key, {}) if isinstance(src.get(key, {}), dict) else {}
+        src_key = key
+        if key == "eh_lrr_ingest" and isinstance(src.get("compute_daily", {}), dict):
+            src_key = "compute_daily"
+        item = src.get(src_key, {}) if isinstance(src.get(src_key, {}), dict) else {}
         enabled = bool(item.get("enabled", merged[key]["enabled"]))
         cron = str(item.get("cron", "")).strip()
         fallback_minutes = 60
@@ -820,17 +1152,34 @@ def save_schedule(data: dict[str, Any]) -> None:
 
 
 def resolve_task_command(task_name: str, args_line: str = "") -> list[str]:
-    args = [a for a in args_line.split(" ") if a.strip()]
-    if task_name == "compute_daily":
-        return compute_exec_cmd("/app/vectorIngest/run_daily.sh", args)
-    if task_name == "compute_worker":
-        return compute_exec_cmd("/app/vectorIngest/run_worker.sh", args)
-    if task_name == "compute_eh_ingest":
-        return compute_exec_cmd("/app/vectorIngest/run_eh_ingest.sh", args)
-    if task_name in TASK_COMMANDS:
-        base = TASK_COMMANDS[task_name]
-        if base and base[0] == "__compute_daily__":
-            return compute_exec_cmd("/app/vectorIngest/run_daily.sh", args)
+    task = LEGACY_TASK_ALIASES.get(task_name, task_name)
+    args = shlex.split(args_line or "")
+    py = shlex.quote(sys.executable)
+    args_q = " ".join(shlex.quote(a) for a in args)
+
+    if task == "lrr_ingest":
+        cmd = f"{py} -u /app/vectorIngest/worker_vl_ingest.py --dsn \"$POSTGRES_DSN\""
+        if args_q:
+            cmd = f"{cmd} {args_q}"
+        return ["bash", "-lc", cmd]
+
+    if task == "eh_ingest":
+        cmd = f"{py} -u /app/vectorIngest/ingest_eh_metadata_to_pg.py --dsn \"$POSTGRES_DSN\""
+        if args_q:
+            cmd = f"{cmd} {args_q}"
+        return ["bash", "-lc", cmd]
+
+    if task == "eh_lrr_ingest":
+        cmd = (
+            f"{py} -u /app/vectorIngest/ingest_eh_metadata_to_pg.py --dsn \"$POSTGRES_DSN\" || true; "
+            f"{py} -u /app/vectorIngest/worker_vl_ingest.py --dsn \"$POSTGRES_DSN\""
+        )
+        if args_q:
+            cmd = f"{cmd} {args_q}"
+        return ["bash", "-lc", cmd]
+
+    if task in TASK_COMMANDS:
+        base = TASK_COMMANDS[task]
         return base + args
     raise ValueError(f"unsupported task: {task_name}")
 
@@ -839,12 +1188,7 @@ def sync_scheduler() -> None:
     apply_runtime_timezone()
     runtime_tz = _runtime_tzinfo()
     cfg = load_schedule()
-    desired = {
-        "eh_fetch": ["/app/ehCrawler/run_eh_fetch.sh"],
-        "lrr_export": ["/app/lrrDataFlush/run_daily_lrr_export.sh"],
-        "text_ingest": ["/app/textIngest/run_daily_text_ingest.sh"],
-        "compute_daily": compute_exec_cmd("/app/vectorIngest/run_daily.sh"),
-    }
+    desired = {k: resolve_task_command(k) for k in DEFAULT_SCHEDULE.keys()}
     existing = {j.id for j in scheduler.get_jobs()}
     for job_id, cmd in desired.items():
         setting = cfg.get(job_id, {})
@@ -884,6 +1228,7 @@ def check_http(url: str, timeout: int = 4) -> tuple[bool, str]:
 
 
 def run_task_async(task_name: str, args_line: str = "") -> dict[str, Any]:
+    task_name = LEGACY_TASK_ALIASES.get(task_name, task_name)
     task_id = str(uuid.uuid4())
     started_at = now_iso()
     item = {
@@ -1139,10 +1484,30 @@ def _compute_xp_map(
 
 _home_rec_cache_lock = threading.Lock()
 _home_rec_cache: dict[str, Any] = {"built_at": 0.0, "key": "", "items": []}
+_tag_cache_lock = threading.Lock()
+_tag_cache: dict[str, Any] = {"built_at": 0.0, "tags": []}
+_chat_mem_lock = threading.Lock()
+_chat_mem: dict[str, dict[str, Any]] = {}
+_model_dl_lock = threading.Lock()
+_model_dl_state: dict[str, dict[str, Any]] = {}
+
+
+def _flatten_floats(values: Any) -> list[float]:
+    out: list[float] = []
+    if isinstance(values, (list, tuple)):
+        for v in values:
+            out.extend(_flatten_floats(v))
+        return out
+    try:
+        out.append(float(values))
+    except Exception:
+        return []
+    return out
 
 
 def _vector_literal(vec: list[float]) -> str:
-    return "[" + ",".join(repr(float(x)) for x in vec) + "]"
+    flat = _flatten_floats(vec)
+    return "[" + ",".join(repr(float(x)) for x in flat) + "]"
 
 
 def _parse_vector_text(text: str) -> list[float]:
@@ -1296,6 +1661,300 @@ def _item_from_eh(row: dict[str, Any], cfg: dict[str, Any] | None = None) -> dic
             "posted": _norm_epoch(row.get("posted")),
         },
     }
+
+
+def _tokenize_query(q: str) -> list[str]:
+    s = str(q or "").strip().lower()
+    if not s:
+        return []
+    chunks = [x.strip() for x in re.split(r"[\s,，。；;|/]+", s) if x.strip()]
+    if chunks:
+        return chunks
+    return [s]
+
+
+def _tag_candidates(ttl_s: int = 900) -> list[str]:
+    now_t = time.time()
+    with _tag_cache_lock:
+        built = float(_tag_cache.get("built_at") or 0.0)
+        if now_t - built <= ttl_s:
+            return list(_tag_cache.get("tags") or [])
+    rows = query_rows(
+        "SELECT tag FROM ("
+        "SELECT unnest(tags) AS tag FROM works "
+        "UNION ALL "
+        "SELECT unnest(tags) AS tag FROM eh_works "
+        "UNION ALL "
+        "SELECT unnest(tags_translated) AS tag FROM eh_works"
+        ") x WHERE tag IS NOT NULL AND length(tag) > 0 GROUP BY tag ORDER BY count(*) DESC LIMIT 5000"
+    )
+    tags = [str(r.get("tag") or "").strip() for r in rows if str(r.get("tag") or "").strip()]
+    with _tag_cache_lock:
+        _tag_cache["built_at"] = now_t
+        _tag_cache["tags"] = list(tags)
+    return tags
+
+
+def _fuzzy_tags(query: str, threshold: float = 0.62, max_tags: int = 10) -> list[str]:
+    tokens = _tokenize_query(query)
+    if not tokens:
+        return []
+    all_tags = _tag_candidates()
+    scored: dict[str, float] = {}
+    th = max(0.2, min(1.0, float(threshold)))
+    for token in tokens:
+        if len(token) < 2:
+            continue
+        for tag in all_tags:
+            t = tag.lower()
+            if token in t or t in token:
+                scored[tag] = max(scored.get(tag, 0.0), 1.0)
+                continue
+            ratio = SequenceMatcher(None, token, t).ratio()
+            if ratio >= th:
+                scored[tag] = max(scored.get(tag, 0.0), ratio)
+    best = sorted(scored.items(), key=lambda kv: kv[1], reverse=True)
+    return [k for k, _ in best[: max(1, int(max_tags))]]
+
+
+def _score_text_hit(title: str, query: str, tags: list[str], matched_tags: list[str]) -> float:
+    q = str(query or "").strip().lower()
+    ttl = str(title or "").strip().lower()
+    score = 0.0
+    if q and ttl:
+        if q == ttl:
+            score += 2.0
+        elif q in ttl:
+            score += 1.2
+        else:
+            score += SequenceMatcher(None, q, ttl).ratio() * 0.6
+    if tags and matched_tags:
+        tag_set = {str(x).lower() for x in tags}
+        m = sum(1 for x in matched_tags if str(x).lower() in tag_set)
+        score += float(m) * 0.35
+    return score
+
+
+def _norm_words(values: list[str] | None) -> list[str]:
+    out: list[str] = []
+    for v in values or []:
+        s = str(v or "").strip().lower()
+        if s:
+            out.append(s)
+    return out
+
+
+def _item_passes_filters(item: dict[str, Any], include_categories: list[str], include_tags: list[str]) -> bool:
+    cats = _norm_words(include_categories)
+    tags_need = _norm_words(include_tags)
+    if cats:
+        cat = str(item.get("category") or "").strip().lower()
+        if cat not in cats:
+            return False
+    if tags_need:
+        tags_all = [str(x).strip().lower() for x in ((item.get("tags") or []) + (item.get("tags_translated") or [])) if str(x).strip()]
+        txt = " ".join(tags_all)
+        for t in tags_need:
+            if t not in txt:
+                return False
+    return True
+
+
+def _filter_items(items: list[dict[str, Any]], include_categories: list[str], include_tags: list[str]) -> list[dict[str, Any]]:
+    if not include_categories and not include_tags:
+        return items
+    return [it for it in items if _item_passes_filters(it, include_categories, include_tags)]
+
+
+def _search_text_non_llm(
+    query: str,
+    scope: str,
+    limit: int,
+    cfg: dict[str, Any],
+    include_categories: list[str] | None = None,
+    include_tags: list[str] | None = None,
+) -> dict[str, Any]:
+    fuzzy_threshold = float(cfg.get("SEARCH_TAG_FUZZY_THRESHOLD", 0.62))
+    matched_tags = _fuzzy_tags(query, threshold=fuzzy_threshold)
+    like = f"%{str(query or '').strip()}%"
+    items: list[dict[str, Any]] = []
+
+    if scope in ("works", "both"):
+        rows = query_rows(
+            "SELECT arcid, title, tags, eh_posted, date_added, lastreadtime "
+            "FROM works "
+            "WHERE (title ILIKE %s OR array_to_string(tags, ' ') ILIKE %s) "
+            "OR (tags && %s::text[]) "
+            "ORDER BY lastreadtime DESC NULLS LAST LIMIT %s",
+            (like, like, matched_tags or [""], int(limit * 3)),
+        )
+        for r in rows:
+            score = _score_text_hit(str(r.get("title") or ""), query, [str(x) for x in (r.get("tags") or [])], matched_tags)
+            items.append(_item_from_work({**r, "score": score}, cfg))
+
+    if scope in ("eh", "both"):
+        rows = query_rows(
+            "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted "
+            "FROM eh_works "
+            "WHERE (title ILIKE %s OR title_jpn ILIKE %s OR array_to_string(tags, ' ') ILIKE %s OR array_to_string(tags_translated, ' ') ILIKE %s) "
+            "OR (tags && %s::text[]) OR (tags_translated && %s::text[]) "
+            "ORDER BY posted DESC NULLS LAST LIMIT %s",
+            (like, like, like, like, matched_tags or [""], matched_tags or [""], int(limit * 3)),
+        )
+        for r in rows:
+            tags_all = [str(x) for x in (r.get("tags") or [])] + [str(x) for x in (r.get("tags_translated") or [])]
+            score = _score_text_hit(str(r.get("title") or r.get("title_jpn") or ""), query, tags_all, matched_tags)
+            items.append(_item_from_eh({**r, "score": score}, cfg))
+
+    items.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    dedup: dict[str, dict[str, Any]] = {}
+    for it in items:
+        dedup[str(it.get("id"))] = it
+        if len(dedup) >= int(limit):
+            break
+    filtered = _filter_items(list(dedup.values()), include_categories or [], include_tags or [])
+    return {
+        "items": filtered[: int(limit)],
+        "next_cursor": "",
+        "has_more": False,
+        "meta": {
+            "mode": "text_search",
+            "llm_used": False,
+            "fuzzy_tags": matched_tags,
+            "scope": scope,
+            "filters": {"categories": include_categories or [], "tags": include_tags or []},
+        },
+    }
+
+
+def _search_by_visual_vector(
+    vec: list[float],
+    scope: str,
+    limit: int,
+    cfg: dict[str, Any],
+    include_categories: list[str] | None = None,
+    include_tags: list[str] | None = None,
+) -> dict[str, Any]:
+    vtxt = _vector_literal(vec)
+    items: list[dict[str, Any]] = []
+    if scope in ("works", "both"):
+        works_rows = query_rows(
+            "SELECT arcid, title, tags, eh_posted, date_added, lastreadtime, "
+            "(visual_embedding <=> (%s)::vector) AS dist "
+            "FROM works WHERE visual_embedding IS NOT NULL "
+            "ORDER BY visual_embedding <=> (%s)::vector LIMIT %s",
+            (vtxt, vtxt, int(limit)),
+        )
+        for r in works_rows:
+            score = 1.0 / (1.0 + float(r.get("dist") or 0.0))
+            items.append(_item_from_work({**r, "score": score}, cfg))
+    if scope in ("eh", "both"):
+        eh_rows = query_rows(
+            "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted, "
+            "(cover_embedding <-> (%s)::vector) AS dist "
+            "FROM eh_works WHERE cover_embedding IS NOT NULL "
+            "ORDER BY cover_embedding <-> (%s)::vector LIMIT %s",
+            (vtxt, vtxt, int(limit)),
+        )
+        for r in eh_rows:
+            score = 1.0 / (1.0 + float(r.get("dist") or 0.0))
+            items.append(_item_from_eh({**r, "score": score}, cfg))
+    items.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    items = _filter_items(items, include_categories or [], include_tags or [])
+    return {
+        "items": items[: int(limit)],
+        "next_cursor": "",
+        "has_more": False,
+        "meta": {"mode": "image_search", "scope": scope, "filters": {"categories": include_categories or [], "tags": include_tags or []}},
+    }
+
+
+def _extract_tensor_like(obj: Any) -> Any:
+    if obj is None:
+        return None
+    if hasattr(obj, "detach"):
+        return obj
+    if isinstance(obj, dict):
+        for k in ("image_embeds", "last_hidden_state", "pooler_output", "logits"):
+            if k in obj:
+                t = _extract_tensor_like(obj.get(k))
+                if t is not None:
+                    return t
+        for v in obj.values():
+            t = _extract_tensor_like(v)
+            if t is not None:
+                return t
+        return None
+    for attr in ("image_embeds", "last_hidden_state", "pooler_output", "logits"):
+        if hasattr(obj, attr):
+            t = _extract_tensor_like(getattr(obj, attr))
+            if t is not None:
+                return t
+    if isinstance(obj, (tuple, list)):
+        for v in obj:
+            t = _extract_tensor_like(v)
+            if t is not None:
+                return t
+    return None
+
+
+def _embed_image_siglip(
+    image_bytes: bytes,
+    model_id: str,
+) -> list[float]:
+    if not image_bytes:
+        return []
+    _ensure_siglip_runtime_deps()
+    try:
+        from PIL import Image
+        import numpy as _np
+        import torch
+        from transformers import AutoModel, AutoProcessor
+    except Exception as e:
+        raise RuntimeError(f"siglip runtime dependencies missing: {e}")
+
+    siglip_dir = _siglip_root()
+    processor = AutoProcessor.from_pretrained(model_id, cache_dir=str(siglip_dir), local_files_only=True)
+    model = AutoModel.from_pretrained(model_id, cache_dir=str(siglip_dir), local_files_only=True)
+    device = "cpu"
+    model = model.to(device)
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    inputs = processor(images=image, return_tensors="pt")
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+    with torch.no_grad():
+        out: Any
+        if hasattr(model, "get_image_features"):
+            out = model.get_image_features(**inputs)
+        else:
+            out = model(**inputs)
+
+        if isinstance(out, torch.Tensor):
+            feats = out
+        elif hasattr(out, "pooler_output") and getattr(out, "pooler_output") is not None:
+            feats = getattr(out, "pooler_output")
+        elif isinstance(out, dict) and "image_embeds" in out:
+            feats = out["image_embeds"]
+        elif isinstance(out, dict) and "last_hidden_state" in out:
+            feats = out["last_hidden_state"]
+        else:
+            out_t = _extract_tensor_like(out)
+            if out_t is None or not hasattr(out_t, "detach"):
+                raise RuntimeError(f"siglip output tensor unavailable: type={type(out)}")
+            feats = out_t
+
+        if not hasattr(feats, "detach"):
+            raise RuntimeError(f"siglip features not tensor: type={type(feats)}")
+        out_t = feats.detach().cpu().float()
+        if out_t.dim() == 3:
+            out_t = out_t.mean(dim=1)
+        if out_t.dim() == 2:
+            out_t = out_t[0]
+        if out_t.dim() != 1:
+            out_t = out_t.reshape(-1)
+        vec = out_t.numpy()
+        norm = float(_np.linalg.norm(vec)) + 1e-12
+        vec = vec / norm
+    return _flatten_floats(vec.tolist())
 
 
 def _l2(a: list[float], b: list[float]) -> float:
@@ -1627,6 +2286,9 @@ def update_config(req: ConfigUpdateRequest) -> dict[str, Any]:
             continue
         new_cfg[key] = _normalize_value(key, v)
 
+    # CPU-only runtime: keep SIGLIP_DEVICE canonical and pinned to cpu.
+    new_cfg["SIGLIP_DEVICE"] = "cpu"
+
     new_cfg["POSTGRES_DSN"] = _build_dsn(new_cfg)
     _save_json_config(new_cfg)
     ok_db, db_err = _save_db_config(new_cfg.get("POSTGRES_DSN", ""), new_cfg)
@@ -1930,57 +2592,221 @@ def home_image_search(req: HomeImageSearchRequest) -> dict[str, Any]:
             detail="image search needs a reference arcid or (gid, token) for now",
         )
 
-    vtxt = _vector_literal(vec)
-    items: list[dict[str, Any]] = []
-    if scope in ("works", "both"):
-        works_rows = query_rows(
-            "SELECT arcid, title, tags, eh_posted, date_added, lastreadtime, "
-            "(visual_embedding <=> (%s)::vector) AS dist "
-            "FROM works WHERE visual_embedding IS NOT NULL "
-            "ORDER BY visual_embedding <=> (%s)::vector LIMIT %s",
-            (vtxt, vtxt, int(limit)),
+    return _search_by_visual_vector(
+        vec,
+        scope,
+        limit,
+        cfg,
+        include_categories=list(req.include_categories or []),
+        include_tags=list(req.include_tags or []),
+    )
+
+
+@app.post("/api/home/search/image/upload")
+async def home_image_search_upload(
+    file: UploadFile = File(...),
+    scope: str = Form(default="both"),
+    limit: int = Form(default=24),
+    query: str = Form(default=""),
+    text_weight: float = Form(default=0.5),
+    visual_weight: float = Form(default=0.5),
+    include_categories: str = Form(default=""),
+    include_tags: str = Form(default=""),
+) -> dict[str, Any]:
+    cfg, _ = resolve_config()
+    scope_use = str(scope or "both").strip().lower()
+    if scope_use not in ("works", "eh", "both"):
+        scope_use = "both"
+    limit_use = max(1, min(60, int(limit or 24)))
+    body = await file.read()
+    if not body:
+        raise HTTPException(status_code=400, detail="empty image")
+    cats = [x.strip().lower() for x in str(include_categories or "").split(",") if x.strip()]
+    tags = [x.strip().lower() for x in str(include_tags or "").split(",") if x.strip()]
+    model_id = str(cfg.get("SIGLIP_MODEL") or "google/siglip-so400m-patch14-384").strip()
+    status = _model_status()
+    if not bool(((status.get("siglip") or {}).get("usable"))):
+        raise HTTPException(status_code=400, detail="siglip model not ready, please download first")
+    try:
+        vec = _embed_image_siglip(
+            body,
+            model_id,
         )
-        for r in works_rows:
-            score = 1.0 / (1.0 + float(r.get("dist") or 0.0))
-            items.append(_item_from_work({**r, "score": score}, cfg))
-    if scope in ("eh", "both"):
-        eh_rows = query_rows(
-            "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted, "
-            "(cover_embedding <-> (%s)::vector) AS dist "
-            "FROM eh_works WHERE cover_embedding IS NOT NULL "
-            "ORDER BY cover_embedding <-> (%s)::vector LIMIT %s",
-            (vtxt, vtxt, int(limit)),
-        )
-        for r in eh_rows:
-            score = 1.0 / (1.0 + float(r.get("dist") or 0.0))
-            items.append(_item_from_eh({**r, "score": score}, cfg))
-    items.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"siglip embed failed: {e}")
+    if not vec:
+        raise HTTPException(status_code=500, detail="siglip produced empty vector")
+    visual_part = _search_by_visual_vector(vec, scope_use, limit_use * 2, cfg, include_categories=cats, include_tags=tags)
+    q = str(query or "").strip()
+    if not q:
+        visual_part["items"] = (visual_part.get("items") or [])[:limit_use]
+        visual_part["meta"] = {**(visual_part.get("meta") or {}), "uploaded": True, "query": ""}
+        return visual_part
+
+    tw = max(0.0, float(text_weight or 0.0))
+    vw = max(0.0, float(visual_weight or 0.0))
+    if tw + vw <= 0:
+        tw, vw = 0.5, 0.5
+    sw = tw + vw
+    tw, vw = tw / sw, vw / sw
+
+    text_part = _search_text_non_llm(q, scope_use, limit_use * 2, cfg, include_categories=cats, include_tags=tags)
+    merged: dict[str, dict[str, Any]] = {}
+    for idx, it in enumerate(text_part.get("items") or []):
+        key = str(it.get("id"))
+        score = (float(it.get("score") or 0.0) + 1.0 / (idx + 1)) * tw
+        row = dict(it)
+        row["score"] = score
+        merged[key] = row
+    for idx, it in enumerate(visual_part.get("items") or []):
+        key = str(it.get("id"))
+        score = (float(it.get("score") or 0.0) + 1.0 / (idx + 1)) * vw
+        if key in merged:
+            merged[key]["score"] = float(merged[key].get("score") or 0.0) + score
+        else:
+            row = dict(it)
+            row["score"] = score
+            merged[key] = row
+    items = sorted(merged.values(), key=lambda x: float(x.get("score") or 0.0), reverse=True)[:limit_use]
     return {
-        "items": items[: int(limit)],
+        "items": items,
         "next_cursor": "",
         "has_more": False,
-        "meta": {"mode": "image_search", "scope": scope},
+        "meta": {
+            "mode": "hybrid_search",
+            "uploaded": True,
+            "query": q,
+            "weights": {"text": round(tw, 4), "visual": round(vw, 4)},
+            "filters": {"categories": cats, "tags": tags},
+        },
     }
 
 
 @app.post("/api/home/search/text")
-def home_text_search_placeholder() -> dict[str, Any]:
-    return {
-        "items": [],
-        "next_cursor": "",
-        "has_more": False,
-        "meta": {"mode": "text_search", "placeholder": True, "message": "reserved for agent-backed NL search"},
-    }
+def home_text_search(req: HomeTextSearchRequest) -> dict[str, Any]:
+    cfg, _ = resolve_config()
+    query = str(req.query or "").strip()
+    if not query:
+        return {"items": [], "next_cursor": "", "has_more": False, "meta": {"mode": "text_search", "empty": True}}
+    scope = str(req.scope or "both").strip().lower()
+    if scope not in ("works", "eh", "both"):
+        scope = "both"
+    limit = max(1, min(60, int(req.limit or 24)))
+    force_llm = _as_bool(cfg.get("SEARCH_FORCE_LLM"), False) or bool(req.use_llm)
+    if force_llm:
+        return {
+            "items": [],
+            "next_cursor": "",
+            "has_more": False,
+            "meta": {
+                "mode": "text_search",
+                "llm_used": False,
+                "llm_forced": True,
+                "message": "LLM-forced mode is reserved for compatibility; data-side fuzzy is active by default",
+            },
+        }
+    return _search_text_non_llm(
+        query,
+        scope,
+        limit,
+        cfg,
+        include_categories=list(req.include_categories or []),
+        include_tags=list(req.include_tags or []),
+    )
 
 
 @app.post("/api/home/search/hybrid")
-def home_hybrid_search_placeholder() -> dict[str, Any]:
+def home_hybrid_search(req: HomeHybridSearchRequest) -> dict[str, Any]:
+    cfg, _ = resolve_config()
+    scope = str(req.scope or "both").strip().lower()
+    if scope not in ("works", "eh", "both"):
+        scope = "both"
+    limit = max(1, min(60, int(req.limit or 24)))
+    tw = float(req.text_weight if req.text_weight is not None else cfg.get("SEARCH_MIXED_TEXT_WEIGHT", 0.5))
+    vw = float(req.visual_weight if req.visual_weight is not None else cfg.get("SEARCH_MIXED_VISUAL_WEIGHT", 0.5))
+    tw = max(0.0, tw)
+    vw = max(0.0, vw)
+    if tw + vw <= 0:
+        tw, vw = 0.5, 0.5
+    sw = tw + vw
+    tw, vw = tw / sw, vw / sw
+
+    text_part = _search_text_non_llm(
+        str(req.query or "").strip(),
+        scope,
+        limit * 2,
+        cfg,
+        include_categories=list(req.include_categories or []),
+        include_tags=list(req.include_tags or []),
+    ) if str(req.query or "").strip() else {
+        "items": []
+    }
+    image_part = home_image_search(
+        HomeImageSearchRequest(
+            arcid=str(req.arcid or ""),
+            gid=req.gid,
+            token=str(req.token or ""),
+            scope=scope,
+            limit=limit * 2,
+            include_categories=list(req.include_categories or []),
+            include_tags=list(req.include_tags or []),
+        )
+    ) if (str(req.arcid or "").strip() or (req.gid is not None and str(req.token or "").strip())) else {"items": []}
+
+    merged: dict[str, dict[str, Any]] = {}
+    for idx, it in enumerate(text_part.get("items") or []):
+        key = str(it.get("id"))
+        score = (float(it.get("score") or 0.0) + 1.0 / (idx + 1)) * tw
+        row = dict(it)
+        row["score"] = score
+        merged[key] = row
+    for idx, it in enumerate(image_part.get("items") or []):
+        key = str(it.get("id"))
+        score = (float(it.get("score") or 0.0) + 1.0 / (idx + 1)) * vw
+        if key in merged:
+            merged[key]["score"] = float(merged[key].get("score") or 0.0) + score
+        else:
+            row = dict(it)
+            row["score"] = score
+            merged[key] = row
+    items = sorted(merged.values(), key=lambda x: float(x.get("score") or 0.0), reverse=True)[:limit]
     return {
-        "items": [],
+        "items": items,
         "next_cursor": "",
         "has_more": False,
-        "meta": {"mode": "hybrid_search", "placeholder": True, "message": "reserved for agent-backed hybrid search"},
+        "meta": {
+            "mode": "hybrid_search",
+            "llm_used": False,
+            "weights": {"text": round(tw, 4), "visual": round(vw, 4)},
+        },
     }
+
+
+@app.get("/api/home/filter/tag-suggest")
+def home_filter_tag_suggest(
+    q: str = Query(default=""),
+    limit: int = Query(default=8, ge=1, le=30),
+) -> dict[str, Any]:
+    kw = str(q or "").strip().lower()
+    if not kw:
+        return {"items": []}
+    fuzzy = _fuzzy_tags(kw, threshold=0.45, max_tags=max(20, limit * 2))
+    rows = query_rows(
+        "SELECT tag FROM ("
+        "SELECT unnest(tags) AS tag FROM works "
+        "UNION ALL SELECT unnest(tags) AS tag FROM eh_works "
+        "UNION ALL SELECT unnest(tags_translated) AS tag FROM eh_works"
+        ") x WHERE tag ILIKE %s GROUP BY tag ORDER BY count(*) DESC LIMIT %s",
+        (f"%{kw}%", int(limit * 2)),
+    )
+    exact = [str(r.get("tag") or "").strip() for r in rows if str(r.get("tag") or "").strip()]
+    out: list[str] = []
+    for t in exact + fuzzy:
+        if t not in out:
+            out.append(t)
+        if len(out) >= int(limit):
+            break
+    return {"items": out}
 
 
 @app.get("/api/cache/thumbs")
@@ -2034,6 +2860,113 @@ async def translation_upload(file: UploadFile = File(...)) -> dict[str, Any]:
         "bytes": len(data),
         "updated_at": datetime.fromtimestamp(out.stat().st_mtime, tz=_runtime_tzinfo()).isoformat(timespec="seconds"),
     }
+
+
+@app.get("/api/models/status")
+def models_status_api() -> dict[str, Any]:
+    return {"model": _model_status(), "download": list(_model_dl_state.values())[-1] if _model_dl_state else None}
+
+
+@app.post("/api/models/siglip/download")
+def model_siglip_download(model_id: str = Query(default="google/siglip-so400m-patch14-384")) -> dict[str, Any]:
+    with _model_dl_lock:
+        for st in _model_dl_state.values():
+            if str(st.get("status")) == "running":
+                return {"ok": True, "task_id": st.get("task_id"), "already_running": True}
+    task_id = f"siglip-{int(time.time())}"
+    state = {
+        "task_id": task_id,
+        "model_id": str(model_id or "google/siglip-so400m-patch14-384").strip(),
+        "status": "queued",
+        "progress": 0,
+        "stage": "queued",
+        "error": "",
+        "logs": [],
+        "started_at": now_iso(),
+    }
+    _set_dl_state(task_id, state)
+    th = threading.Thread(target=_download_siglip_worker, args=(task_id, state["model_id"]), daemon=True)
+    th.start()
+    return {"ok": True, "task_id": task_id, "status": state}
+
+
+@app.get("/api/models/siglip/download/{task_id}")
+def model_siglip_download_status(task_id: str) -> dict[str, Any]:
+    with _model_dl_lock:
+        st = _model_dl_state.get(str(task_id))
+    if not st:
+        raise HTTPException(status_code=404, detail="task not found")
+    return {"ok": True, "status": st, "model": _model_status()}
+
+
+@app.delete("/api/models/siglip")
+def model_siglip_clear() -> dict[str, Any]:
+    return _clear_siglip_runtime()
+
+
+@app.delete("/api/models/runtime-deps")
+def model_runtime_deps_clear() -> dict[str, Any]:
+    return _clear_runtime_pydeps()
+
+
+@app.post("/api/chat/message")
+def chat_message(req: ChatMessageRequest) -> dict[str, Any]:
+    text = str(req.text or "").strip()
+    mode = str(req.mode or "chat").strip().lower()
+    if not text and not str(req.image_arcid or "").strip():
+        raise HTTPException(status_code=400, detail="empty message")
+
+    bucket = _chat_bucket(req.session_id)
+    now = now_iso()
+    user_msg = {
+        "role": "user",
+        "text": text,
+        "mode": mode,
+        "image_arcid": str(req.image_arcid or "").strip(),
+        "time": now,
+    }
+    bucket["messages"].append(user_msg)
+
+    reply = ""
+    tool = "chat"
+    payload: dict[str, Any] | None = None
+    if mode == "search_image" and str(req.image_arcid or "").strip():
+        tool = "search_image"
+        payload = home_image_search(HomeImageSearchRequest(arcid=str(req.image_arcid).strip(), scope="both", limit=12))
+        reply = "已按图完成检索，结果已返回。"
+    elif mode == "search_text":
+        tool = "search_text"
+        payload = home_text_search(HomeTextSearchRequest(query=text, scope="both", limit=12, use_llm=False))
+        reply = "已完成文本检索（无LLM意图识别）。"
+    else:
+        ctx = req.context or {}
+        brief = str(ctx.get("page") or "").strip()
+        if brief:
+            reply = f"已记录上下文页面：{brief}。你可以让我代执行搜索或解说当前数据。"
+        else:
+            reply = "收到。可直接发搜索词或图片（按图检索），我会优先走本地轻量流程。"
+
+    assistant_msg = {
+        "role": "assistant",
+        "text": reply,
+        "tool": tool,
+        "payload": payload,
+        "time": now_iso(),
+    }
+    bucket["messages"].append(assistant_msg)
+    bucket["messages"] = bucket["messages"][-80:]
+    return {
+        "ok": True,
+        "session_id": str(req.session_id or "default"),
+        "message": assistant_msg,
+        "history": bucket["messages"],
+    }
+
+
+@app.get("/api/chat/history")
+def chat_history(session_id: str = Query(default="default")) -> dict[str, Any]:
+    bucket = _chat_bucket(session_id)
+    return {"session_id": session_id, "messages": list(bucket.get("messages") or []), "facts": list(bucket.get("facts") or [])}
 
 
 @app.get("/api/xp-map")

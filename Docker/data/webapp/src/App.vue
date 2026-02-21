@@ -21,7 +21,20 @@
       <v-app-bar-nav-icon @click="drawer = !drawer" />
       <v-app-bar-title class="font-weight-bold">{{ t(currentTitleKey) }}</v-app-bar-title>
       <v-spacer />
-      <v-select v-model="lang" :items="['zh', 'en']" hide-details density="compact" variant="outlined" style="max-width: 120px" />
+      <v-menu location="bottom end">
+        <template #activator="{ props }">
+          <v-btn v-bind="props" icon="mdi-earth" variant="text" />
+        </template>
+        <v-list density="compact" min-width="160">
+          <v-list-item
+            v-for="opt in langOptions"
+            :key="opt.value"
+            :title="opt.title"
+            :active="lang === opt.value"
+            @click="lang = opt.value"
+          />
+        </v-list>
+      </v-menu>
     </v-app-bar>
 
     <v-main>
@@ -29,7 +42,7 @@
         <section v-show="tab === 'dashboard'">
           <v-card class="pa-4 mb-4">
             <div class="d-flex align-center ga-2 flex-wrap">
-              <v-btn icon="mdi-camera-outline" variant="text" @click="runImageSearchQuick" />
+              <v-btn icon="mdi-camera-outline" variant="text" @click="imageSearchDialog = true" />
               <v-text-field
                 v-model="homeSearchQuery"
                 class="home-search-input"
@@ -40,12 +53,13 @@
                 @keyup.enter="runHomeSearchPlaceholder"
               />
               <v-btn color="primary" variant="tonal" prepend-icon="mdi-magnify" @click="runHomeSearchPlaceholder">{{ t('home.search.go') }}</v-btn>
-              <v-btn icon="mdi-filter-variant" variant="text" @click="notify(t('home.filter.placeholder'), 'info')" />
+              <v-btn icon="mdi-filter-variant" variant="text" @click="homeFiltersOpen = true" />
             </div>
             <div class="d-flex align-center justify-space-between mt-3 flex-wrap ga-2">
               <v-tabs v-model="homeTab" density="comfortable" color="primary">
                 <v-tab value="history">{{ t('home.tab.history') }}</v-tab>
                 <v-tab value="recommend">{{ t('home.tab.recommend') }}</v-tab>
+                <v-tab value="search">{{ t('home.tab.search') }}</v-tab>
               </v-tabs>
               <v-btn-toggle v-model="homeViewMode" mandatory density="compact" variant="outlined">
                 <v-btn value="wide">{{ t('home.view.wide') }}</v-btn>
@@ -57,8 +71,35 @@
 
           <v-alert v-if="activeHomeState.error" type="warning" class="mb-3">{{ activeHomeState.error }}</v-alert>
 
+          <v-card v-if="homeTab === 'search'" class="pa-3 mb-3" variant="flat">
+            <div
+              class="upload-dropzone"
+              :class="{ active: imageDropActive }"
+              @dragover.prevent="imageDropActive = true"
+              @dragleave.prevent="imageDropActive = false"
+              @drop.prevent="onImageDrop"
+              @click="triggerImagePicker"
+            >
+              <div class="text-body-2">{{ selectedImageFile ? selectedImageFile.name : t('home.image_upload.hint') }}</div>
+              <div class="text-caption text-medium-emphasis">{{ t('home.image_upload.subhint') }}</div>
+            </div>
+            <v-text-field
+              v-model="imageSearchQuery"
+              class="mt-2"
+              density="compact"
+              variant="outlined"
+              :label="t('home.search.extra_text')"
+              :hint="t('home.search.extra_text_hint')"
+              persistent-hint
+              @keyup.enter="runImageUploadSearch"
+            />
+            <div class="d-flex justify-end mt-2">
+              <v-btn color="primary" :disabled="!selectedImageFile" @click="runImageUploadSearch">{{ t('home.image_upload.search') }}</v-btn>
+            </div>
+          </v-card>
+
           <v-list v-if="homeViewMode === 'list'" class="mb-2" lines="two">
-            <v-list-item v-for="item in activeHomeState.items" :key="item.id" :title="item.title || '-'" :subtitle="itemSubtitle(item)">
+            <v-list-item v-for="item in filteredHomeItems" :key="item.id" :title="item.title || '-'" :subtitle="itemSubtitle(item)">
               <template #prepend>
                 <div class="list-cover">
                   <div v-if="item.thumb_url" class="cover-bg-blur list-blur" :style="{ backgroundImage: `url(${item.thumb_url})` }" />
@@ -74,7 +115,7 @@
 
           <v-row v-else>
             <v-col
-              v-for="item in activeHomeState.items"
+              v-for="item in filteredHomeItems"
               :key="item.id"
               cols="12"
               :sm="homeViewMode === 'wide' ? 6 : 4"
@@ -130,7 +171,7 @@
 
           <div ref="homeSentinel" class="home-sentinel" />
           <div v-if="activeHomeState.loading" class="text-center py-3"><v-progress-circular indeterminate color="primary" size="24" /></div>
-          <div v-else-if="!activeHomeState.items.length" class="text-center text-medium-emphasis py-8">{{ t('home.empty') }}</div>
+          <div v-else-if="!filteredHomeItems.length" class="text-center text-medium-emphasis py-8">{{ t('home.empty') }}</div>
 
           <v-dialog :model-value="!!mobilePreviewItem" max-width="360" @update:model-value="onMobilePreviewToggle">
             <v-card v-if="mobilePreviewItem" class="pa-2 hover-preview-card" variant="flat">
@@ -145,6 +186,116 @@
               </div>
             </v-card>
           </v-dialog>
+
+          <v-dialog v-model="imageSearchDialog" max-width="560">
+            <v-card class="pa-4" variant="flat">
+              <div class="text-subtitle-1 font-weight-medium mb-2">{{ t('home.image_upload.title') }}</div>
+              <div
+                class="upload-dropzone"
+                :class="{ active: imageDropActive }"
+                @dragover.prevent="imageDropActive = true"
+                @dragleave.prevent="imageDropActive = false"
+                @drop.prevent="onImageDrop"
+                @click="triggerImagePicker"
+              >
+                <div class="text-body-2">{{ selectedImageFile ? selectedImageFile.name : t('home.image_upload.hint') }}</div>
+                <div class="text-caption text-medium-emphasis">{{ t('home.image_upload.subhint') }}</div>
+              </div>
+              <input ref="imageFileInputRef" type="file" accept="image/*" class="d-none" @change="onImagePickChange" />
+              <v-text-field
+                v-model="imageSearchQuery"
+                class="mt-3"
+                density="compact"
+                variant="outlined"
+                :label="t('home.search.extra_text')"
+                :hint="t('home.search.extra_text_hint')"
+                persistent-hint
+                @keyup.enter="runImageUploadSearch"
+              />
+              <div class="d-flex ga-2 mt-3 justify-end">
+                <v-btn variant="text" @click="imageSearchDialog = false">{{ t('home.image_upload.cancel') }}</v-btn>
+                <v-btn color="primary" :disabled="!selectedImageFile" @click="runImageUploadSearch">{{ t('home.image_upload.search') }}</v-btn>
+              </div>
+            </v-card>
+          </v-dialog>
+
+          <v-dialog v-model="homeFiltersOpen" max-width="680">
+            <v-card class="pa-4" variant="flat">
+              <div class="text-subtitle-1 font-weight-medium mb-2">{{ t('home.filter.title') }}</div>
+              <div class="text-caption text-medium-emphasis mb-3">{{ t('home.filter.hint') }}</div>
+              <div class="text-body-2 mb-2">{{ t('home.filter.categories') }}</div>
+              <div class="d-flex ga-2 mb-2">
+                <v-btn size="small" variant="outlined" @click="selectAllHomeFilterCategories">{{ t('home.filter.select_all') }}</v-btn>
+                <v-btn size="small" variant="outlined" @click="clearAllHomeFilterCategories">{{ t('home.filter.select_none') }}</v-btn>
+              </div>
+              <div class="d-flex flex-wrap ga-2 mb-3">
+                <v-btn
+                  v-for="cat in ehCategoryDefs"
+                  :key="`f-${cat.key}`"
+                  class="category-btn"
+                  :style="homeFilterCategoryStyle(cat.key, cat.color)"
+                  @click="toggleHomeFilterCategory(cat.key)"
+                >{{ cat.label }}</v-btn>
+              </div>
+              <v-autocomplete
+                v-model="homeFilters.tags"
+                v-model:search="filterTagInput"
+                :items="filterTagSuggestions"
+                multiple
+                chips
+                closable-chips
+                clearable
+                :label="t('home.filter.tags')"
+                :hint="t('home.filter.tags_hint')"
+                persistent-hint
+              />
+              <div class="d-flex justify-end ga-2 mt-3">
+                <v-btn variant="text" @click="clearHomeFilters">{{ t('home.filter.clear') }}</v-btn>
+                <v-btn color="primary" @click="applyHomeFilters">{{ t('home.filter.apply') }}</v-btn>
+              </div>
+            </v-card>
+          </v-dialog>
+        </section>
+
+        <section v-show="tab === 'chat'">
+          <v-row>
+            <v-col cols="12" md="3">
+              <v-card class="pa-3 chat-sidebar" variant="flat">
+                <div class="d-flex align-center justify-space-between mb-2">
+                  <div class="text-subtitle-2">{{ t('chat.sessions') }}</div>
+                  <v-btn size="small" variant="text" icon="mdi-plus" @click="createChatSession" />
+                </div>
+                <v-list density="compact" nav>
+                  <v-list-item
+                    v-for="s in chatSessions"
+                    :key="s.id"
+                    :title="s.title"
+                    :active="chatSessionId === s.id"
+                    @click="chatSessionId = s.id"
+                  />
+                </v-list>
+              </v-card>
+            </v-col>
+            <v-col cols="12" md="9">
+              <v-card class="pa-3 chat-main" variant="flat">
+                <div class="chat-log mb-3">
+                  <div v-for="(m, idx) in (activeChatSession?.messages || [])" :key="`${idx}-${m.time || ''}`" :class="['chat-bubble', m.role === 'assistant' ? 'assistant' : 'user']">
+                    <div class="text-body-2">{{ m.text }}</div>
+                    <div class="text-caption text-medium-emphasis mt-1">{{ m.role }} · {{ formatDateMinute(m.time) }}</div>
+                  </div>
+                </div>
+                <div class="d-flex ga-2 align-center">
+                  <v-text-field v-model="chatInput" hide-details density="comfortable" :label="t('chat.input')" variant="outlined" @keyup.enter="sendChat('chat')" />
+                  <v-btn :loading="chatSending" color="primary" @click="sendChat('chat')">{{ t('chat.send') }}</v-btn>
+                </div>
+                <div class="d-flex ga-2 mt-2">
+                  <v-btn size="small" variant="tonal" @click="sendChat('search_text')">{{ t('chat.action.search_text') }}</v-btn>
+                  <v-btn size="small" variant="tonal" @click="tab='dashboard'; homeTab='recommend'">{{ t('chat.action.open_recommend') }}</v-btn>
+                  <v-btn size="small" variant="tonal" @click="tab='xp'; chatInput=t('chat.prompt.xp'); sendChat('chat')">{{ t('chat.action.explain_xp') }}</v-btn>
+                </div>
+              </v-card>
+            </v-col>
+          </v-row>
         </section>
 
         <section v-show="tab === 'control'">
@@ -160,11 +311,10 @@
               <v-col cols="12" md="4" lg="2"><v-btn block color="primary" @click="triggerTask('eh_fetch')">{{ t('control.btn.eh_fetch') }}</v-btn></v-col>
               <v-col cols="12" md="4" lg="2"><v-btn block color="primary" @click="triggerTask('lrr_export')">{{ t('control.btn.lrr_export') }}</v-btn></v-col>
               <v-col cols="12" md="4" lg="2"><v-btn block color="primary" @click="triggerTask('text_ingest')">{{ t('control.btn.text_ingest') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('compute_daily')">{{ t('control.btn.compute_daily') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('compute_eh_ingest')">{{ t('control.btn.compute_eh_ingest') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('compute_worker', workerArgs)">{{ t('control.btn.compute_worker') }}</v-btn></v-col>
+              <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('eh_lrr_ingest')">{{ t('control.btn.eh_lrr_ingest') }}</v-btn></v-col>
+              <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('eh_ingest')">{{ t('control.btn.eh_ingest') }}</v-btn></v-col>
+              <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('lrr_ingest')">{{ t('control.btn.lrr_ingest') }}</v-btn></v-col>
             </v-row>
-            <v-text-field v-model="workerArgs" class="mt-3" :label="t('control.worker.args')" :hint="t('control.worker.args.help')" persistent-hint />
           </v-card>
 
           <v-card class="pa-4 mb-4">
@@ -402,6 +552,23 @@
                 <v-chip variant="tonal" color="info">{{ t('settings.cache.stats', { files: thumbCacheStats.files || 0, mb: thumbCacheStats.mb || 0, latest: thumbCacheStats.latest_at || '-' }) }}</v-chip>
                 <v-btn variant="outlined" color="warning" @click="clearThumbCacheAction">{{ t('settings.cache.clear') }}</v-btn>
               </v-col>
+              <v-col cols="12" md="12" class="d-flex align-center ga-2 flex-wrap">
+                <v-chip variant="tonal" color="secondary">{{ t('settings.model.siglip_status', { mb: modelStatus.siglip?.size_mb || 0 }) }}</v-chip>
+                <v-chip variant="tonal" :color="modelStatus.runtime_deps?.ready ? 'success' : 'warning'">{{ t('settings.model.runtime_deps', { mb: modelStatus.runtime_deps?.size_mb || 0, ready: modelStatus.runtime_deps?.ready ? 'yes' : 'no' }) }}</v-chip>
+                <v-btn variant="outlined" color="primary" @click="downloadSiglipAction">{{ t('settings.model.siglip_download') }}</v-btn>
+                <v-btn variant="outlined" color="error" @click="clearSiglipAction">{{ t('settings.model.siglip_clear') }}</v-btn>
+                <v-btn variant="outlined" color="warning" @click="clearRuntimeDepsAction">{{ t('settings.model.runtime_deps_clear') }}</v-btn>
+                <v-chip v-if="siglipDownload.status" variant="outlined">{{ t('settings.model.siglip_task', { status: siglipDownload.status, stage: siglipDownload.stage || '-' }) }}</v-chip>
+              </v-col>
+              <v-col cols="12" md="12" v-if="siglipDownload.status && siglipDownload.status !== 'done'">
+                <v-progress-linear :model-value="Number(siglipDownload.progress || 0)" color="primary" height="14">
+                  <template #default>{{ Number(siglipDownload.progress || 0) }}%</template>
+                </v-progress-linear>
+                <div class="text-caption text-medium-emphasis mt-1" v-if="siglipDownload.error">{{ siglipDownload.error }}</div>
+              </v-col>
+              <v-col cols="12" md="12" v-if="Array.isArray(siglipDownload.logs) && siglipDownload.logs.length">
+                <div class="model-log-view mono">{{ siglipDownload.logs.slice(-8).join('\n') }}</div>
+              </v-col>
             </v-row>
           </v-card>
 
@@ -479,13 +646,12 @@
               <v-col cols="12" md="6"><v-text-field v-model="config.VL_MODEL_ID" :label="labelFor('VL_MODEL_ID')" /></v-col>
               <v-col cols="12" md="6"><v-text-field v-model="config.EMB_MODEL_ID" :label="labelFor('EMB_MODEL_ID')" /></v-col>
               <v-col cols="12" md="6"><v-text-field v-model="config.SIGLIP_MODEL" :label="labelFor('SIGLIP_MODEL')" /></v-col>
-              <v-col cols="12" md="6"><v-text-field v-model="config.SIGLIP_DEVICE" :label="labelFor('SIGLIP_DEVICE')" /></v-col>
               <v-col cols="12" md="6"><v-text-field v-model="config.WORKER_BATCH" :label="labelFor('WORKER_BATCH')" type="number" /></v-col>
               <v-col cols="12" md="6"><v-text-field v-model="config.WORKER_SLEEP" :label="labelFor('WORKER_SLEEP')" type="number" /></v-col>
               <v-col cols="12" md="6"><v-switch v-model="config.TEXT_INGEST_PRUNE_NOT_SEEN" :label="labelFor('TEXT_INGEST_PRUNE_NOT_SEEN')" /></v-col>
               <v-col cols="12" md="6"><v-switch v-model="config.WORKER_ONLY_MISSING" :label="labelFor('WORKER_ONLY_MISSING')" /></v-col>
               <v-col cols="12" md="6"><v-text-field v-model="config.TEXT_INGEST_BATCH_SIZE" :label="labelFor('TEXT_INGEST_BATCH_SIZE')" type="number" /></v-col>
-              <v-col cols="12" md="6"><v-text-field v-model="config.TAG_TRANSLATION_REPO" :label="labelFor('TAG_TRANSLATION_REPO')" /></v-col>
+              <v-col cols="12" md="6"><v-text-field v-model="config.TAG_TRANSLATION_REPO" :label="labelFor('TAG_TRANSLATION_REPO')" clearable :hint="t('settings.translation.repo_hint')" persistent-hint /></v-col>
               <v-col cols="12" md="6"><v-text-field v-model="config.TAG_TRANSLATION_AUTO_UPDATE_HOURS" :label="labelFor('TAG_TRANSLATION_AUTO_UPDATE_HOURS')" type="number" /></v-col>
               <v-col cols="12" md="6" class="d-flex align-center">
                 <v-chip variant="tonal" color="info">{{ t('settings.translation.status', { repo: translationStatus.repo || '-', sha: translationStatus.head_sha || '-', fetched: translationStatus.fetched_at || '-' }) }}</v-chip>
@@ -502,6 +668,8 @@
           <v-card v-show="settingsTab === 'search'" class="pa-4 mb-4">
             <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('settings.tab.search') }}</div>
             <v-row>
+              <v-col cols="12" md="6"><v-switch v-model="config.SEARCH_FORCE_LLM" :label="labelFor('SEARCH_FORCE_LLM')" /></v-col>
+              <v-col cols="12" md="6"><v-slider v-model="config.SEARCH_TAG_FUZZY_THRESHOLD" min="0.2" max="1" step="0.01" :label="labelFor('SEARCH_TAG_FUZZY_THRESHOLD')" thumb-label /></v-col>
               <v-col cols="12" md="6"><v-slider v-model="config.SEARCH_TEXT_WEIGHT" min="0" max="1" step="0.01" :label="labelFor('SEARCH_TEXT_WEIGHT')" thumb-label /></v-col>
               <v-col cols="12" md="6"><v-slider v-model="config.SEARCH_VISUAL_WEIGHT" min="0" max="1" step="0.01" :label="labelFor('SEARCH_VISUAL_WEIGHT')" thumb-label /></v-col>
               <v-col cols="12" md="6"><v-slider v-model="config.SEARCH_MIXED_TEXT_WEIGHT" min="0" max="1" step="0.01" :label="labelFor('SEARCH_MIXED_TEXT_WEIGHT')" thumb-label /></v-col>
@@ -535,6 +703,25 @@
       </v-container>
     </v-main>
 
+    <div class="chat-fab-wrap">
+      <v-btn color="primary" icon="mdi-chat" size="large" class="chat-fab" @click="chatFabOpen = !chatFabOpen" />
+      <v-card v-if="chatFabOpen" class="chat-fab-panel pa-3" variant="flat">
+        <div class="d-flex align-center justify-space-between mb-2">
+          <div class="text-subtitle-2">{{ t('chat.fab.title') }}</div>
+          <v-btn size="x-small" icon="mdi-close" variant="text" @click="chatFabOpen=false" />
+        </div>
+        <div class="chat-fab-log mb-2">
+          <div v-for="(m, idx) in (activeChatSession?.messages || []).slice(-6)" :key="`fab-${idx}-${m.time || ''}`" :class="['chat-bubble mini', m.role === 'assistant' ? 'assistant' : 'user']">
+            <div class="text-caption">{{ m.text }}</div>
+          </div>
+        </div>
+        <div class="d-flex ga-2 align-center">
+          <v-text-field v-model="chatInput" hide-details density="compact" :label="t('chat.input')" variant="outlined" @keyup.enter="sendChat('chat')" />
+          <v-btn size="small" :loading="chatSending" color="primary" @click="sendChat('chat')">{{ t('chat.send') }}</v-btn>
+        </div>
+      </v-card>
+    </div>
+
     <v-snackbar v-model="toast.show" :color="toast.color" timeout="3000">{{ toast.text }}</v-snackbar>
   </v-app>
 </template>
@@ -553,15 +740,24 @@ import {
   getHealth,
   getHomeHistory,
   getHomeRecommend,
+  getHomeTagSuggest,
+  getModelStatus,
+  getSiglipDownloadStatus,
   getThumbCacheStats,
+  getChatHistory,
   getTranslationStatus,
   getSchedule,
   getTasks,
   getXpMap,
+  downloadSiglip,
+  clearSiglip,
+  clearRuntimeDeps,
   runTask,
   clearThumbCache,
   searchByImage,
-  searchByTextPlaceholder,
+  searchByImageUpload,
+  searchByText,
+  sendChatMessage,
   uploadTranslationFile,
   updateConfig,
   updateSchedule,
@@ -573,6 +769,10 @@ const drawer = ref(true);
 const rail = ref(false);
 const tab = ref("dashboard");
 const lang = ref(getInitialLang());
+const langOptions = [
+  { title: "简体中文", value: "zh" },
+  { title: "English", value: "en" },
+];
 const theme = useTheme();
 const themeOptions = [
   { title: "Modern", value: "modern" },
@@ -593,9 +793,16 @@ const health = ref({ database: {}, services: {} });
 const homeTab = ref("history");
 const homeViewMode = ref("wide");
 const homeSearchQuery = ref("");
+const imageSearchQuery = ref("");
 const homeSentinel = ref(null);
 const homeHistory = ref({ items: [], cursor: "", hasMore: true, loading: false, error: "" });
 const homeRecommend = ref({ items: [], cursor: "", hasMore: true, loading: false, error: "" });
+const homeSearchState = ref({ items: [], cursor: "", hasMore: false, loading: false, error: "" });
+const homeFiltersOpen = ref(false);
+const homeFilters = ref({ categories: [], tags: [] });
+const filterTagInput = ref("");
+const filterTagSuggestions = ref([]);
+const lastSearchContext = ref({ mode: "", query: "", hasImage: false });
 const schedule = ref({});
 const tasks = ref([]);
 const config = ref({});
@@ -606,8 +813,19 @@ const settingsTab = ref("general");
 const thumbCacheStats = ref({ files: 0, mb: 0, latest_at: "-" });
 const translationStatus = ref({ repo: "", head_sha: "", fetched_at: "-", manual_file: { path: "", exists: false, size: 0, updated_at: "-" } });
 const translationUploadRef = ref(null);
+const modelStatus = ref({ siglip: { path: "", size_mb: 0 } });
+const siglipDownload = ref({ task_id: "", status: "", progress: 0, stage: "", error: "", logs: [] });
+let siglipPollTimer = null;
+const chatFabOpen = ref(false);
+const chatSessions = ref([{ id: "default", title: "New Chat", messages: [] }]);
+const chatSessionId = ref("default");
+const chatInput = ref("");
+const chatSending = ref(false);
+const imageSearchDialog = ref(false);
+const imageDropActive = ref(false);
+const selectedImageFile = ref(null);
+const imageFileInputRef = ref(null);
 
-const workerArgs = ref("--limit 20 --only-missing");
 const auditRows = ref([]);
 const auditLogs = ref([]);
 const taskOptions = ref([]);
@@ -657,6 +875,9 @@ const ehCategoryDefs = [
   { key: "western", label: "Western", color: "#18e61f" },
   { key: "misc", label: "Misc", color: "#473f3f" },
 ];
+if (!homeFilters.value.categories.length) {
+  homeFilters.value.categories = ehCategoryDefs.map((x) => x.key);
+}
 const ehCategoryAllowMap = ref(Object.fromEntries(ehCategoryDefs.map((x) => [x.key, true])));
 const ehCategoryMap = Object.fromEntries(ehCategoryDefs.map((x) => [String(x.key).toLowerCase(), x]));
 const mobilePreviewItem = ref(null);
@@ -673,6 +894,7 @@ const toast = ref({ show: false, text: "", color: "success" });
 
 const navItems = [
   { key: "dashboard", title: "tab.dashboard", icon: "mdi-view-dashboard-outline" },
+  { key: "chat", title: "tab.chat", icon: "mdi-chat-processing-outline" },
   { key: "control", title: "tab.control", icon: "mdi-console" },
   { key: "audit", title: "tab.audit", icon: "mdi-clipboard-text-clock-outline" },
   { key: "xp", title: "tab.xp_map", icon: "mdi-chart-bubble" },
@@ -694,7 +916,37 @@ const highlightedLogHtml = computed(() => {
   return escaped.replace(re, (m) => `<mark>${m}</mark>`).replace(/\n/g, "<br>");
 });
 
-const activeHomeState = computed(() => (homeTab.value === "history" ? homeHistory.value : homeRecommend.value));
+const activeHomeState = computed(() => {
+  if (homeTab.value === "history") return homeHistory.value;
+  if (homeTab.value === "recommend") return homeRecommend.value;
+  return homeSearchState.value;
+});
+const filteredHomeItems = computed(() => {
+  const src = activeHomeState.value?.items || [];
+  const cats = (effectiveFilterCategories() || []).map((x) => String(x).toLowerCase());
+  const tags = (homeFilters.value.tags || []).map((x) => String(x).toLowerCase()).filter(Boolean);
+  if (!cats.length && !tags.length) return src;
+  return src.filter((it) => {
+    if (cats.length) {
+      const c = String(it?.category || "").toLowerCase();
+      if (!cats.includes(c)) return false;
+    }
+    if (tags.length) {
+      const all = [
+        ...((it?.tags || []).map((x) => String(x).toLowerCase())),
+        ...((it?.tags_translated || []).map((x) => String(x).toLowerCase())),
+      ].join(" ");
+      for (const t of tags) {
+        if (!all.includes(t)) return false;
+      }
+    }
+    return true;
+  });
+});
+const activeChatSession = computed(() => {
+  const found = (chatSessions.value || []).find((s) => s.id === chatSessionId.value);
+  return found || chatSessions.value[0];
+});
 
 function t(key, vars = {}) {
   return tr(lang.value, key, vars);
@@ -898,6 +1150,130 @@ async function onTranslationUploadChange(event) {
   if (translationUploadRef.value) translationUploadRef.value.value = "";
 }
 
+async function loadModelStatus() {
+  try {
+    const res = await getModelStatus();
+    modelStatus.value = res.model || res || {};
+    if (res.download) siglipDownload.value = { ...siglipDownload.value, ...res.download };
+  } catch {
+    // ignore
+  }
+}
+
+async function pollSiglipTask(taskId) {
+  if (!taskId) return;
+  if (siglipPollTimer) clearInterval(siglipPollTimer);
+  siglipPollTimer = setInterval(async () => {
+    try {
+      const res = await getSiglipDownloadStatus(taskId);
+      const st = res.status || {};
+      siglipDownload.value = { ...siglipDownload.value, ...st };
+      modelStatus.value = res.model || modelStatus.value;
+      if (st.status === "done" || st.status === "failed") {
+        clearInterval(siglipPollTimer);
+        siglipPollTimer = null;
+        notify(st.status === "done" ? t("settings.model.siglip_downloaded") : String(st.error || "download failed"), st.status === "done" ? "success" : "warning");
+      }
+    } catch {
+      // ignore one poll failure
+    }
+  }, 1800);
+}
+
+async function downloadSiglipAction() {
+  try {
+    const res = await downloadSiglip({ model_id: String(config.value.SIGLIP_MODEL || "google/siglip-so400m-patch14-384") });
+    const tid = String(res.task_id || "");
+    if (tid) {
+      siglipDownload.value = { ...(res.status || {}), task_id: tid };
+      await pollSiglipTask(tid);
+    }
+  } catch (e) {
+    notify(String(e?.response?.data?.detail || e), "warning");
+  }
+}
+
+async function clearRuntimeDepsAction() {
+  try {
+    const res = await clearRuntimeDeps();
+    notify(t("settings.model.runtime_deps_cleared", { mb: res.freed_mb ?? 0 }), "success");
+    await loadModelStatus();
+  } catch (e) {
+    notify(String(e?.response?.data?.detail || e), "warning");
+  }
+}
+
+async function clearSiglipAction() {
+  try {
+    const res = await clearSiglip();
+    notify(t("settings.model.siglip_cleared", { mb: res.freed_mb ?? 0 }), "success");
+    await loadModelStatus();
+  } catch (e) {
+    notify(String(e?.response?.data?.detail || e), "warning");
+  }
+}
+
+function ensureChatSession() {
+  if (!chatSessions.value.length) {
+    chatSessions.value = [{ id: "default", title: "New Chat", messages: [] }];
+    chatSessionId.value = "default";
+  }
+  if (!chatSessions.value.find((s) => s.id === chatSessionId.value)) {
+    chatSessionId.value = chatSessions.value[0].id;
+  }
+}
+
+function createChatSession() {
+  const id = `s-${Date.now()}`;
+  chatSessions.value.unshift({ id, title: "New Chat", messages: [] });
+  chatSessionId.value = id;
+}
+
+async function loadChatHistory() {
+  ensureChatSession();
+  try {
+    const res = await getChatHistory({ session_id: chatSessionId.value });
+    const sess = activeChatSession.value;
+    if (sess) sess.messages = res.messages || [];
+  } catch {
+    // ignore
+  }
+}
+
+async function sendChat(mode = "chat") {
+  if (chatSending.value) return;
+  const text = String(chatInput.value || "").trim();
+  if (!text && mode === "chat") return;
+  ensureChatSession();
+  chatSending.value = true;
+  try {
+    const res = await sendChatMessage({
+      session_id: chatSessionId.value,
+      text,
+      mode,
+      context: { page: tab.value },
+    });
+    const sess = activeChatSession.value;
+    if (sess) {
+      sess.messages = res.history || [];
+      if (text && sess.title === "New Chat") sess.title = text.slice(0, 24);
+    }
+    const payload = res?.message?.payload;
+    if (payload?.items && mode !== "chat") {
+      homeSearchState.value.items = payload.items || [];
+      homeSearchState.value.cursor = "";
+      homeSearchState.value.hasMore = false;
+      tab.value = "dashboard";
+      homeTab.value = "search";
+    }
+    chatInput.value = "";
+  } catch (e) {
+    notify(String(e?.response?.data?.detail || e), "warning");
+  } finally {
+    chatSending.value = false;
+  }
+}
+
 function normalizeSearchWeights(prefixA, prefixB, changedKey) {
   const a = Number(config.value[prefixA] ?? 0.5);
   const b = Number(config.value[prefixB] ?? 0.5);
@@ -921,8 +1297,102 @@ function normalizeSearchWeights(prefixA, prefixB, changedKey) {
   }
 }
 
+function toggleHomeFilterCategory(key) {
+  const k = String(key || "");
+  const set = new Set(homeFilters.value.categories || []);
+  if (set.has(k)) set.delete(k);
+  else set.add(k);
+  homeFilters.value.categories = Array.from(set);
+}
+
+function selectAllHomeFilterCategories() {
+  homeFilters.value.categories = ehCategoryDefs.map((x) => x.key);
+}
+
+function clearAllHomeFilterCategories() {
+  homeFilters.value.categories = [];
+}
+
+function homeFilterCategoryStyle(key, color) {
+  const on = (homeFilters.value.categories || []).includes(key);
+  return {
+    backgroundColor: on ? color : "#424242",
+    color: "#ffffff",
+    opacity: on ? 1 : 0.45,
+  };
+}
+
+function effectiveFilterCategories() {
+  const all = ehCategoryDefs.map((x) => x.key);
+  const selected = homeFilters.value.categories || [];
+  if (selected.length === all.length) return [];
+  if (selected.length === 0) return ["__none__"];
+  return selected;
+}
+
+function clearHomeFilters() {
+  homeFilters.value = { categories: ehCategoryDefs.map((x) => x.key), tags: [] };
+  filterTagInput.value = "";
+  filterTagSuggestions.value = [];
+}
+
+async function loadTagSuggestions() {
+  const q = String(filterTagInput.value || "").trim();
+  if (q.length < 2) {
+    filterTagSuggestions.value = [];
+    return;
+  }
+  try {
+    const res = await getHomeTagSuggest({ q, limit: 10 });
+    filterTagSuggestions.value = res.items || [];
+  } catch {
+    filterTagSuggestions.value = [];
+  }
+}
+
+async function rerunSearchWithFilters() {
+  const cats = effectiveFilterCategories();
+  const tags = homeFilters.value.tags || [];
+  const ctx = lastSearchContext.value || {};
+  const fallbackQ = String(homeSearchQuery.value || "").trim();
+  const q = String(ctx.query || fallbackQ || "").trim();
+  if (ctx.mode === "text" && String(ctx.query || "").trim()) {
+    const res = await searchByText({ query: q, scope: "both", limit: 24, use_llm: false, include_categories: cats, include_tags: tags });
+    homeSearchState.value.items = res.items || [];
+    lastSearchContext.value = { mode: "text", query: q, hasImage: false };
+    return;
+  }
+  if ((ctx.mode === "image" || selectedImageFile.value) && selectedImageFile.value) {
+    const res = await searchByImageUpload(selectedImageFile.value, {
+      scope: "both",
+      limit: 24,
+      query: q,
+      text_weight: Number(config.value.SEARCH_MIXED_TEXT_WEIGHT ?? 0.5),
+      visual_weight: Number(config.value.SEARCH_MIXED_VISUAL_WEIGHT ?? 0.5),
+      include_categories: cats.join(","),
+      include_tags: tags.join(","),
+    });
+    homeSearchState.value.items = res.items || [];
+    lastSearchContext.value = { mode: "image", query: q, hasImage: true };
+    return;
+  }
+  if (q) {
+    const res = await searchByText({ query: q, scope: "both", limit: 24, use_llm: false, include_categories: cats, include_tags: tags });
+    homeSearchState.value.items = res.items || [];
+    lastSearchContext.value = { mode: "text", query: q, hasImage: false };
+  }
+}
+
+async function applyHomeFilters() {
+  homeFiltersOpen.value = false;
+  if (homeTab.value === "search") {
+    await rerunSearchWithFilters();
+  }
+}
+
 async function loadHomeFeed(reset = false) {
   const state = activeHomeState.value;
+  if (homeTab.value === "search") return;
   if (state.loading) return;
   if (!state.hasMore && !reset) return;
   state.loading = true;
@@ -946,8 +1416,10 @@ async function resetHomeFeed() {
   const target = activeHomeState.value;
   target.items = [];
   target.cursor = "";
-  target.hasMore = true;
-  await loadHomeFeed(true);
+  target.hasMore = homeTab.value !== "search";
+  if (homeTab.value !== "search") {
+    await loadHomeFeed(true);
+  }
 }
 
 async function runHomeSearchPlaceholder() {
@@ -956,8 +1428,24 @@ async function runHomeSearchPlaceholder() {
     notify(t("home.search.placeholder"), "info");
     return;
   }
-  await searchByTextPlaceholder({ query: q });
-  notify(t("home.search.agent_placeholder"), "info");
+  try {
+    const res = await searchByText({
+      query: q,
+      scope: "both",
+      limit: 24,
+      use_llm: false,
+      include_categories: effectiveFilterCategories(),
+      include_tags: homeFilters.value.tags || [],
+    });
+    homeSearchState.value.items = res.items || [];
+    homeSearchState.value.cursor = "";
+    homeSearchState.value.hasMore = false;
+    homeTab.value = "search";
+    lastSearchContext.value = { mode: "text", query: q, hasImage: false };
+    notify(t("home.search.done"), "success");
+  } catch (e) {
+    notify(String(e?.response?.data?.detail || e), "warning");
+  }
 }
 
 async function runImageSearchQuick() {
@@ -980,6 +1468,53 @@ async function runImageSearchQuick() {
     homeRecommend.value.hasMore = false;
     homeTab.value = "recommend";
     notify(t("home.search.image_ready"), "success");
+  } catch (e) {
+    notify(String(e?.response?.data?.detail || e), "warning");
+  }
+}
+
+function triggerImagePicker() {
+  if (imageFileInputRef.value) imageFileInputRef.value.click();
+}
+
+function onImagePickChange(event) {
+  const file = event?.target?.files?.[0];
+  selectedImageFile.value = file || null;
+}
+
+async function onImageDrop(event) {
+  imageDropActive.value = false;
+  const file = event?.dataTransfer?.files?.[0];
+  if (!file) return;
+  if (!String(file.type || "").startsWith("image/")) {
+    notify(t("home.image_upload.only_image"), "warning");
+    return;
+  }
+  selectedImageFile.value = file;
+  if (homeTab.value === "search") {
+    await runImageUploadSearch();
+  }
+}
+
+async function runImageUploadSearch() {
+  if (!selectedImageFile.value) return;
+  try {
+    const res = await searchByImageUpload(selectedImageFile.value, {
+      scope: "both",
+      limit: 24,
+      query: String(imageSearchQuery.value || "").trim(),
+      text_weight: Number(config.value.SEARCH_MIXED_TEXT_WEIGHT ?? 0.5),
+      visual_weight: Number(config.value.SEARCH_MIXED_VISUAL_WEIGHT ?? 0.5),
+      include_categories: effectiveFilterCategories().join(","),
+      include_tags: (homeFilters.value.tags || []).join(","),
+    });
+    homeSearchState.value.items = res.items || [];
+    homeSearchState.value.cursor = "";
+    homeSearchState.value.hasMore = false;
+    homeTab.value = "search";
+    lastSearchContext.value = { mode: "image", query: String(imageSearchQuery.value || "").trim(), hasImage: true };
+    imageSearchDialog.value = false;
+    notify(t("home.search.image_uploaded_ready"), "success");
   } catch (e) {
     notify(String(e?.response?.data?.detail || e), "warning");
   }
@@ -1066,6 +1601,8 @@ function labelFor(key) {
     SEARCH_VISUAL_WEIGHT: "settings.search.visual_weight",
     SEARCH_MIXED_TEXT_WEIGHT: "settings.search.mixed_text_weight",
     SEARCH_MIXED_VISUAL_WEIGHT: "settings.search.mixed_visual_weight",
+    SEARCH_FORCE_LLM: "settings.search.force_llm",
+    SEARCH_TAG_FUZZY_THRESHOLD: "settings.search.fuzzy_threshold",
     TAG_TRANSLATION_REPO: "settings.translation.repo",
     TAG_TRANSLATION_AUTO_UPDATE_HOURS: "settings.translation.auto_update_hours",
     PROMPT_SEARCH_NARRATIVE_SYSTEM: "settings.prompt.search_narrative",
@@ -1096,7 +1633,6 @@ function labelFor(key) {
     VL_MODEL_ID: "settings.compute.vl_model_id",
     EMB_MODEL_ID: "settings.compute.emb_model_id",
     SIGLIP_MODEL: "settings.compute.siglip_model",
-    SIGLIP_DEVICE: "settings.compute.siglip_device",
     WORKER_BATCH: "settings.compute.worker_batch",
     WORKER_SLEEP: "settings.compute.worker_sleep",
   };
@@ -1196,6 +1732,9 @@ async function loadConfigData() {
   if (config.value.SEARCH_VISUAL_WEIGHT === undefined) config.value.SEARCH_VISUAL_WEIGHT = 0.4;
   if (config.value.SEARCH_MIXED_TEXT_WEIGHT === undefined) config.value.SEARCH_MIXED_TEXT_WEIGHT = 0.5;
   if (config.value.SEARCH_MIXED_VISUAL_WEIGHT === undefined) config.value.SEARCH_MIXED_VISUAL_WEIGHT = 0.5;
+  if (config.value.SEARCH_FORCE_LLM === undefined) config.value.SEARCH_FORCE_LLM = false;
+  if (!config.value.SEARCH_TAG_FUZZY_THRESHOLD) config.value.SEARCH_TAG_FUZZY_THRESHOLD = 0.62;
+  config.value.SIGLIP_DEVICE = "cpu";
   if (!config.value.TAG_TRANSLATION_AUTO_UPDATE_HOURS) config.value.TAG_TRANSLATION_AUTO_UPDATE_HOURS = 24;
   normalizeSearchWeights("SEARCH_TEXT_WEIGHT", "SEARCH_VISUAL_WEIGHT");
   normalizeSearchWeights("SEARCH_MIXED_TEXT_WEIGHT", "SEARCH_MIXED_VISUAL_WEIGHT");
@@ -1438,6 +1977,14 @@ watch(homeTab, () => {
   nextTick().then(() => bindHomeInfiniteScroll());
 });
 
+watch(chatSessionId, () => {
+  loadChatHistory().catch(() => null);
+});
+
+watch(filterTagInput, () => {
+  loadTagSuggestions().catch(() => null);
+});
+
 watch(() => config.value.SEARCH_TEXT_WEIGHT, () => normalizeSearchWeights("SEARCH_TEXT_WEIGHT", "SEARCH_VISUAL_WEIGHT", "SEARCH_TEXT_WEIGHT"));
 watch(() => config.value.SEARCH_VISUAL_WEIGHT, () => normalizeSearchWeights("SEARCH_TEXT_WEIGHT", "SEARCH_VISUAL_WEIGHT", "SEARCH_VISUAL_WEIGHT"));
 watch(() => config.value.SEARCH_MIXED_TEXT_WEIGHT, () => normalizeSearchWeights("SEARCH_MIXED_TEXT_WEIGHT", "SEARCH_MIXED_VISUAL_WEIGHT", "SEARCH_MIXED_TEXT_WEIGHT"));
@@ -1502,6 +2049,7 @@ watch(logAutoStream, (enabled) => {
 
 onMounted(async () => {
   try {
+    ensureChatSession();
     await Promise.all([
       loadDashboard(),
       loadConfigData(),
@@ -1512,6 +2060,8 @@ onMounted(async () => {
       resetHomeFeed(),
       loadThumbCacheStats(),
       loadTranslationStatus(),
+      loadModelStatus(),
+      loadChatHistory(),
     ]);
     await setupTaskStream();
     await nextTick();
@@ -1541,6 +2091,7 @@ onBeforeUnmount(() => {
   if (dashboardTimer) clearInterval(dashboardTimer);
   if (logTimer) clearInterval(logTimer);
   if (xpTimer) clearTimeout(xpTimer);
+  if (siglipPollTimer) clearInterval(siglipPollTimer);
   if (touchPreviewTimer) clearTimeout(touchPreviewTimer);
   if (homeObserver) {
     homeObserver.disconnect();
@@ -1757,6 +2308,101 @@ const ServiceChip = defineComponent({
 
 .home-sentinel {
   height: 2px;
+}
+
+.chat-sidebar {
+  min-height: 560px;
+  border: 1px solid rgba(110, 118, 129, 0.25);
+}
+
+.chat-main {
+  min-height: 560px;
+  border: 1px solid rgba(110, 118, 129, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-log {
+  flex: 1;
+  min-height: 420px;
+  max-height: 58vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.chat-bubble {
+  max-width: 80%;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.chat-bubble.user {
+  align-self: flex-end;
+  background: rgba(var(--v-theme-primary), 0.15);
+}
+
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: rgba(110, 118, 129, 0.16);
+}
+
+.chat-bubble.mini {
+  max-width: 100%;
+  padding: 6px 8px;
+}
+
+.chat-fab-wrap {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 40;
+}
+
+.chat-fab-panel {
+  position: absolute;
+  right: 0;
+  bottom: 56px;
+  width: min(360px, 88vw);
+  border: 1px solid rgba(110, 118, 129, 0.25);
+}
+
+.chat-fab-log {
+  max-height: 240px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upload-dropzone {
+  border: 1px dashed rgba(110, 118, 129, 0.55);
+  border-radius: 10px;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  background: rgba(30, 41, 59, 0.25);
+}
+
+.upload-dropzone.active {
+  border-color: rgba(var(--v-theme-primary), 0.8);
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.model-log-view {
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border: 1px solid rgba(110, 118, 129, 0.3);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 12px;
 }
 
 .metric-card {

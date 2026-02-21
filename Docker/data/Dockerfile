@@ -27,6 +27,7 @@ COPY data/requirements.txt /app/requirements.txt
 COPY data/ehCrawler /app/ehCrawler
 COPY data/lrrDataFlush /app/lrrDataFlush
 COPY data/textIngest /app/textIngest
+COPY data/vectorIngest /app/vectorIngest
 COPY data/webapi /app/webapi
 COPY --from=webbuild /webapp/dist /app/webapi/static
 

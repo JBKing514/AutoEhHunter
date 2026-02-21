@@ -101,12 +101,40 @@ export async function searchByImage(payload = {}) {
   return data;
 }
 
+export async function searchByImageUpload(file, payload = {}) {
+  const form = new FormData();
+  form.append("file", file);
+  Object.entries(payload || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) form.append(k, String(v));
+  });
+  const { data } = await api.post("/home/search/image/upload", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000,
+  });
+  return data;
+}
+
+export async function getHomeTagSuggest(params = {}) {
+  const { data } = await api.get("/home/filter/tag-suggest", { params });
+  return data;
+}
+
 export async function searchByTextPlaceholder(payload = {}) {
   const { data } = await api.post("/home/search/text", payload);
   return data;
 }
 
+export async function searchByText(payload = {}) {
+  const { data } = await api.post("/home/search/text", payload);
+  return data;
+}
+
 export async function searchHybridPlaceholder(payload = {}) {
+  const { data } = await api.post("/home/search/hybrid", payload);
+  return data;
+}
+
+export async function searchHybrid(payload = {}) {
   const { data } = await api.post("/home/search/hybrid", payload);
   return data;
 }
@@ -133,5 +161,40 @@ export async function uploadTranslationFile(file) {
     headers: { "Content-Type": "multipart/form-data" },
     timeout: 120000,
   });
+  return data;
+}
+
+export async function getModelStatus() {
+  const { data } = await api.get("/models/status");
+  return data;
+}
+
+export async function downloadSiglip(params = {}) {
+  const { data } = await api.post("/models/siglip/download", null, { params });
+  return data;
+}
+
+export async function getSiglipDownloadStatus(taskId) {
+  const { data } = await api.get(`/models/siglip/download/${encodeURIComponent(taskId)}`);
+  return data;
+}
+
+export async function clearSiglip() {
+  const { data } = await api.delete("/models/siglip");
+  return data;
+}
+
+export async function clearRuntimeDeps() {
+  const { data } = await api.delete("/models/runtime-deps");
+  return data;
+}
+
+export async function getChatHistory(params = {}) {
+  const { data } = await api.get("/chat/history", { params });
+  return data;
+}
+
+export async function sendChatMessage(payload = {}) {
+  const { data } = await api.post("/chat/message", payload);
   return data;
 }
