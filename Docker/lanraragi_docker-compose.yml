@@ -1,0 +1,11 @@
+services:
+  lanraragi:
+    image: difegue/lanraragi
+    container_name: lanraragi
+    ports:
+      - "3000:3000"
+    volumes:
+      - ${LRR_CONTENT_DIR}:/home/koyomi/lanraragi/content
+      - ${LRR_THUMB_DIR}:/home/koyomi/lanraragi/thumb
+      - ${LRR_DATABASE_DIR}:/home/koyomi/lanraragi/database
+    restart: unless-stopped

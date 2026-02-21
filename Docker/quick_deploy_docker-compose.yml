@@ -1,0 +1,53 @@
+services:
+  pg17:
+    image: pgvector/pgvector:pg17
+    container_name: pgvector-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-lrr_library}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-lrr_library}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  lanraragi:
+    image: difegue/lanraragi
+    container_name: lanraragi
+    ports:
+      - "3000:3000"
+    volumes:
+      - ${LRR_CONTENT_DIR}:/home/koyomi/lanraragi/content
+      - ${LRR_THUMB_DIR}:/home/koyomi/lanraragi/thumb
+      - ${LRR_DATABASE_DIR}:/home/koyomi/lanraragi/database
+    restart: unless-stopped
+
+  data-ui:
+    image: autoeh-data:local
+    build:
+      context: .
+      dockerfile: data/Dockerfile
+    container_name: autoeh-data-ui
+    command: ["data-ui"]
+    environment:
+      POSTGRES_HOST: pg17
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-lrr_library}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      LRR_BASE: http://lanraragi:3000
+      DATA_UI_TIMEZONE: ${DATA_UI_TIMEZONE:-Asia/Shanghai}
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data/runtime:/app/runtime
+    restart: unless-stopped
+    depends_on:
+      pg17:
+        condition: service_healthy
