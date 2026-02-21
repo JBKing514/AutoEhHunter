@@ -1,74 +1,73 @@
-# AutoEhHunter Quick Start
+# AutoEhHunter Quick Start Guide
 
 > 🌐 Language / 语言: [English](STARTUP_EN.md) | [中文](STARTUP.md)
 
 ## 0. Prerequisites
 
-- Docker Desktop / Docker Engine (recommended 27+)
-- (Optional) an OpenAI-compatible `/v1` model endpoint
+* **Docker**: Docker Desktop / Docker Engine (v27+ recommended)
+* **OpenAI-compatible backend (optional)**: any `/v1` endpoint (LM Studio / vLLM / compatible Ollama proxy, etc.)
+* **Note**: LLM connectivity is optional; baseline pipeline still works without it.
 
-## 1. Quick Template (Recommended)
+## 1. Basic Steps
 
-```bash
-git clone https://github.com/JBKing514/AutoEhHunter.git
-cd AutoEhHunter
-docker compose -f Docker/quick_deploy_docker-compose.yml up -d
-```
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/JBKing514/AutoEhHunter.git
+   cd AutoEhHunter
+   ```
 
-Quick template starts:
+2. **Start with quick template (recommended)**
+   ```bash
+   docker compose -f Docker/quick_deploy_docker-compose.yml up -d
+   ```
 
-- `pg17` (PostgreSQL + pgvector)
-- `lanraragi`
-- `data-ui` (WebUI + API + scheduler + chat)
+   This starts: `pg17`, `lanraragi`, `data-ui`.
 
-> `.env` editing is no longer mandatory before first boot. Configure from WebUI after startup.
+3. **Open WebUI**
+   * Visit `http://<host>:8501`
+   * Configure PostgreSQL/LRR and model endpoints in `Settings`
 
-## 2. Manual Step-by-Step Templates (Optional)
+## 2. Manual Step-by-Step Deployment (Optional)
 
-If you want finer control, launch components separately:
+If you want split startup or cross-host deployment:
 
 1. PostgreSQL
-
-```bash
-docker compose -f Docker/pg17_docker-compose.yml up -d
-```
+   ```bash
+   docker compose -f Docker/pg17_docker-compose.yml up -d
+   ```
 
 2. LANraragi
+   ```bash
+   docker compose -f Docker/lanraragi_docker-compose.yml up -d
+   ```
 
-```bash
-docker compose -f Docker/lanraragi_docker-compose.yml up -d
-```
+3. Data UI / API
+   ```bash
+   docker compose -f Docker/main_docker-compose.yml up -d
+   ```
 
-3. Data service
+## 3. First Initialization (Important)
 
-```bash
-docker compose -f Docker/main_docker-compose.yml up -d
-```
+On the `Control` page, run in order:
 
-## 3. First WebUI Setup
+1. `[EH Fetch]`
+2. `[LRR Export]`
+3. `[Text Ingest]`
+4. `[LRR Ingest]`
+5. `[EH Ingest]` (optional)
 
-- Open: `http://<host>:8501`
-- In `Settings`, configure:
-  - PostgreSQL / LANraragi
-  - `INGEST_API_BASE` + models (optional)
-  - `LLM_API_BASE` + models (optional)
+> For daily operation, schedule `EH+LRR Ingest`.
 
-## 4. First Initialization Order
+## 4. Model Endpoint Strategy
 
-On `Control` page, run in order:
+* **Single endpoint mode**: one `/v1` for VL + Embedding + LLM
+* **Split endpoint mode**:
+  * `INGEST_API_BASE` for ingestion (VL/Embedding)
+  * `LLM_API_BASE` for chat/narrative (can use larger model)
+* **Without LLM**: baseline retrieval/data pipeline works; NL narrative features are limited.
 
-1. `EH Fetch`
-2. `LRR Export`
-3. `Text Ingest`
-4. `LRR Ingest`
-5. `EH Ingest` (optional)
+## 5. Runtime Suggestions
 
-For daily operation, schedule `EH+LRR Ingest`.
-
-## 5. Model Endpoint Notes
-
-- **Single endpoint mode**: one `/v1` for VL/Embedding/LLM.
-- **Split endpoint mode**:
-  - `INGEST_API_BASE` (ingestion)
-  - `LLM_API_BASE` (chat + narrative)
-- **No LLM still works**: baseline retrieval/ingestion works; NL-enhanced features are limited.
+* EH fetch: every 10~30 minutes
+* Ingest: once per day (shorten if backlog grows)
+* CPU-only works by default; first full ingest can be slower

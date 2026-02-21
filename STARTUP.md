@@ -1,74 +1,73 @@
-# AutoEhHunter 快速启动
+# AutoEhHunter 快速启动指南
 
 > 🌐 语言 / Language: [中文](STARTUP.md) | [English](STARTUP_EN.md)
 
-## 0. 前提
+## 0. 前提条件
 
-- Docker Desktop / Docker Engine（推荐 27+）
-- （可选）OpenAI-compatible `/v1` 模型服务
+* **Docker 环境**：推荐 Docker Desktop / Docker Engine (v27+)。
+* **OpenAI 兼容后端（可选）**：支持 `/v1` 接口（LM Studio / vLLM / Ollama兼容层等）。
+* **说明**：LLM 连接是可选项；未配置时系统仍可运行基础链路。
 
-## 1. 快速模板启动（推荐）
+## 1. 基础步骤
 
-```bash
-git clone https://github.com/JBKing514/AutoEhHunter.git
-cd AutoEhHunter
-docker compose -f Docker/quick_deploy_docker-compose.yml up -d
-```
+1. **克隆项目**
+   ```bash
+   git clone https://github.com/JBKing514/AutoEhHunter.git
+   cd AutoEhHunter
+   ```
 
-快速模板会拉起：
+2. **快速模板启动（推荐）**
+   ```bash
+   docker compose -f Docker/quick_deploy_docker-compose.yml up -d
+   ```
 
-- `pg17`（PostgreSQL + pgvector）
-- `lanraragi`
-- `data-ui`（WebUI + API + 调度 + 聊天）
+   该模板会拉起：`pg17`、`lanraragi`、`data-ui`。
 
-> 不再强制先写 `.env`。启动后可直接在 WebUI 配置。
+3. **访问 WebUI**
+   * 浏览器打开 `http://<host>:8501`。
+   * 在 `Settings` 里配置 PostgreSQL/LRR 以及模型端点。
 
-## 2. 手动模板分步启动（可选）
+## 2. 手动分步部署（可选）
 
-如果你希望逐个组件控制，使用以下模板：
+适用于想逐个拉起容器或跨机部署：
 
 1. PostgreSQL
-
-```bash
-docker compose -f Docker/pg17_docker-compose.yml up -d
-```
+   ```bash
+   docker compose -f Docker/pg17_docker-compose.yml up -d
+   ```
 
 2. LANraragi
+   ```bash
+   docker compose -f Docker/lanraragi_docker-compose.yml up -d
+   ```
 
-```bash
-docker compose -f Docker/lanraragi_docker-compose.yml up -d
-```
+3. Data UI / API
+   ```bash
+   docker compose -f Docker/main_docker-compose.yml up -d
+   ```
 
-3. Data 服务
+## 3. 首次初始化 (关键步骤)
 
-```bash
-docker compose -f Docker/main_docker-compose.yml up -d
-```
+在 `Control` 页面建议依次执行：
 
-## 3. 首次进入 WebUI
+1. `[立即爬取 EH]`
+2. `[导出 LRR]`
+3. `[文本入库]`
+4. `[LRR入库]`
+5. `[EH入库]`（可选）
 
-- 访问：`http://<host>:8501`
-- 在 `Settings` 中完成：
-  - PostgreSQL / LANraragi 参数
-  - `INGEST_API_BASE` + 模型（可选）
-  - `LLM_API_BASE` + 模型（可选）
+> 日常维护推荐使用 `EH+LRR入库` 定时任务。
 
-## 4. 初始化任务顺序
+## 4. 模型连接策略
 
-建议在 `Control` 页按顺序执行：
+* **单端点模式**：一个 `/v1` 同时承担 VL + Embedding + LLM。
+* **双端点模式**：
+  * `INGEST_API_BASE` 用于入库（VL/Embedding）
+  * `LLM_API_BASE` 用于聊天/叙事（可接更大模型）
+* **不配置 LLM**：基础检索与数据链路可用，智能叙事与自然语言增强不可用。
 
-1. `立即爬取 EH`
-2. `导出 LRR`
-3. `文本入库`
-4. `LRR入库`
-5. `EH入库`（可选）
+## 5. 运行建议
 
-日常建议用 `EH+LRR入库` 定时任务。
-
-## 5. 模型连接说明
-
-- **单端点模式**：一个 `/v1` 同时承担 VL/Embedding/LLM。
-- **双端点模式**：
-  - `INGEST_API_BASE`（入库）
-  - `LLM_API_BASE`（聊天与叙事）
-- **不配置 LLM 也可运行**：基础检索与数据链路可用；自然语言增强能力会受限。
+* EH 抓取：每 10~30 分钟
+* 入库：每天 1 次（按增量可缩短）
+* CPU-only 默认可用，首轮全量入库耗时更长

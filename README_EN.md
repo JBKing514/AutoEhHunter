@@ -2,18 +2,32 @@
 
 > 🌐 Language / 语言: [English](README_EN.md) | [中文](README.md)
 
-Private multimodal retrieval workspace for E-Hentai + LANraragi (Data-Only primary architecture).
+### Private Multimodal RAG Retrieval System for E-Hentai and LANraragi
 
-## Current State
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
 
-- Core path is consolidated into the `data` container (WebUI + API + scheduler + chat routing).
-- `compute` / `n8n` are no longer required for baseline operation.
-- You can start containers first, then configure everything from WebUI Settings.
-- Supports either:
-  - single `/v1` endpoint for VL + Embedding + LLM
-  - split ingest/chat endpoints
+<p align="center">
+  <img src="https://github.com/JBKing514/autoEhHunter/blob/main/Media/ico/AutoEhHunterLogo_256.png" width="256" alt="AutoEhHunter_Ico">
+  <br>
+  <em>AutoEhHunter</em>
+</p>
 
-## Architecture (English)
+## Motivation
+
+**"I remember the cover and plot vibe, but still can't find that work because I forgot the exact tag/title."**
+
+AutoEhHunter is built to move from rigid keyword search to semantic + visual retrieval.
+
+## Overview
+
+AutoEhHunter now uses the **Data container** as the primary entry point for:
+
+- EH/LRR sync and metadata cleaning
+- SigLIP vector ingestion
+- Text / image / hybrid retrieval
+- Chat routing, skills, and plugin extension
+
+## Architecture
 
 ```mermaid
 flowchart TB
@@ -72,37 +86,55 @@ flowchart TB
  class PG storage
 ```
 
-## Deployment Modes
+## Core Features
 
-### 1) Quick Template (one command)
+### 1. Multimodal Retrieval
+* Visual search (image to vectors)
+* Text search with fuzzy tag mapping
+* Hybrid search with multi-channel weighting
 
-Use `Docker/quick_deploy_docker-compose.yml`:
+### 2. Data Pipeline
+* EH funnel crawling + LRR export
+* Optional metadata enhancement and translation
+* Scheduled ingestion jobs
 
-```bash
-docker compose -f Docker/quick_deploy_docker-compose.yml up -d
-```
+### 3. Recommendation / Profile
+* XP clustering and preference estimation
+* Tunable strictness and Tag/Visual weights
 
-This template launches: `pg17 + lanraragi + data-ui`.
+### 4. Chat + Skills
+* Auto/manual intents: chat/profile/search/report/recommendation
+* Built-in skills + runtime plugin loading
 
-### 2) Manual Templates (step-by-step)
+## Requirements
 
-- PostgreSQL: `Docker/pg17_docker-compose.yml`
-- LANraragi: `Docker/lanraragi_docker-compose.yml`
-- Data service: `Docker/main_docker-compose.yml`
+### `data-ui` container (primary)
+* WebUI + FastAPI + scheduler + chat gateway
+* CPU-only default is supported
 
-You can start them separately (e.g. run model endpoints on another machine), then point addresses/models in Settings.
+### External model endpoints (optional)
+* OpenAI-compatible `/v1`
+* Single endpoint for VL/Embedding/LLM, or split ingest/chat endpoints
 
-## Model Connectivity Strategy
+## Getting Started
 
-- Single endpoint mode: one `/v1` for ingest + chat.
-- Split endpoint mode:
-  - `INGEST_API_BASE`: cheaper/faster model stack for VL+embedding
-  - `LLM_API_BASE`: larger model stack for chat/NLG
-- Without LLM config: baseline retrieval and ingest still work; NL search/report narratives are disabled.
+* [Quick Start](STARTUP_EN.md)
+* [中文启动指南](STARTUP.md)
+* [Contribution Guide](CONTRIBUTING_EN.md)
 
-## Docs
+## Config & Persistence
 
-- [Quick Start](STARTUP_EN.md)
-- [快速启动（中文）](STARTUP.md)
-- [Contribution Guide](CONTRIBUTING_EN.md)
-- [贡献指南（中文）](CONTRIBUTING.md)
+- Priority: `app_config(DB) > JSON fallback > .env`
+- You can start first and configure from Settings later
+- Without LLM config, baseline features still work
+
+## Tech Stack
+
+* PostgreSQL 17 + pgvector
+* FastAPI + Vue 3
+* SigLIP (CPU-only default)
+* OpenAI-compatible `/v1` endpoints
+
+## Disclaimer
+
+For personal retrieval research and archiving only. Follow site ToS and local regulations.
