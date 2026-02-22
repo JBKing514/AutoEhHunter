@@ -43,6 +43,7 @@ Docker/local-files/
 # --- Build artifacts ---
 build/
 dist/
+astrbot-dashboard/
 
 # --- Companion Android/Kotlin build outputs ---
 Companion/**/build/

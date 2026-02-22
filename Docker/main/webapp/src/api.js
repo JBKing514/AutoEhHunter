@@ -5,8 +5,99 @@ const api = axios.create({
   timeout: 30000,
 });
 
+let csrfToken = "";
+
+export function setCsrfToken(token) {
+  csrfToken = String(token || "");
+}
+
+api.interceptors.request.use((config) => {
+  const method = String(config?.method || "get").toUpperCase();
+  if (csrfToken && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const headers = config.headers || {};
+    headers["x-csrf-token"] = csrfToken;
+    config.headers = headers;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("aeh-auth-required"));
+    }
+    return Promise.reject(error);
+  },
+);
+
 export async function getHealth() {
   const { data } = await api.get("/health");
+  return data;
+}
+
+export async function getAuthBootstrap() {
+  const { data } = await api.get("/auth/bootstrap");
+  return data;
+}
+
+export async function registerAdmin(username, password) {
+  const { data } = await api.post("/auth/register-admin", { username, password });
+  return data;
+}
+
+export async function login(username, password) {
+  const { data } = await api.post("/auth/login", { username, password });
+  return data;
+}
+
+export async function logout() {
+  const { data } = await api.post("/auth/logout");
+  return data;
+}
+
+export async function getMe() {
+  const { data } = await api.get("/auth/me");
+  return data;
+}
+
+export async function getCsrfToken() {
+  const { data } = await api.get("/auth/csrf");
+  return data;
+}
+
+export async function updateProfile(username) {
+  const { data } = await api.put("/auth/profile", { username });
+  return data;
+}
+
+export async function changePassword(oldPassword, newPassword) {
+  const { data } = await api.put("/auth/password", { old_password: oldPassword, new_password: newPassword });
+  return data;
+}
+
+export async function deleteAccount(password) {
+  const { data } = await api.delete("/auth/account", { data: { password } });
+  return data;
+}
+
+export async function getSetupStatus() {
+  const { data } = await api.get("/setup/status");
+  return data;
+}
+
+export async function validateSetupDb(payload = {}) {
+  const { data } = await api.post("/setup/validate-db", payload);
+  return data;
+}
+
+export async function validateSetupLrr(payload = {}) {
+  const { data } = await api.post("/setup/validate-lrr", payload);
+  return data;
+}
+
+export async function completeSetup() {
+  const { data } = await api.post("/setup/complete");
   return data;
 }
 
@@ -40,6 +131,31 @@ export async function runTask(task, args = "") {
   return data;
 }
 
+export async function clearEhCheckpoint() {
+  const { data } = await api.delete("/eh/checkpoint");
+  return data;
+}
+
+export async function getDevSchemaStatus() {
+  const { data } = await api.get("/dev/schema");
+  return data;
+}
+
+export async function uploadDevSchema(file) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post("/dev/schema/upload", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000,
+  });
+  return data;
+}
+
+export async function injectDevSchema() {
+  const { data } = await api.post("/dev/schema/inject");
+  return data;
+}
+
 export async function getTasks() {
   const { data } = await api.get("/tasks");
   return data;
@@ -61,6 +177,11 @@ export async function getAuditHistory(params = {}) {
 
 export async function getAuditLogs() {
   const { data } = await api.get("/audit/logs");
+  return data;
+}
+
+export async function clearAuditLogs() {
+  const { data } = await api.delete("/audit/logs");
   return data;
 }
 
@@ -201,6 +322,66 @@ export async function getChatHistory(params = {}) {
 
 export async function sendChatMessage(payload = {}) {
   const { data } = await api.post("/chat/message", payload);
+  return data;
+}
+
+export async function streamChatMessage(payload = {}, onEvent) {
+  const res = await fetch("/api/chat/stream", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "x-csrf-token": csrfToken || "",
+    },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`stream failed: HTTP ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const raw = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 2);
+      if (!raw.startsWith("data:")) continue;
+      const txt = raw.slice(5).trim();
+      if (!txt) continue;
+      try {
+        const evt = JSON.parse(txt);
+        if (typeof onEvent === "function") onEvent(evt);
+      } catch {
+        // ignore malformed chunk
+      }
+    }
+  }
+}
+
+export async function editChatMessage(payload = {}) {
+  const { data } = await api.put("/chat/message/edit", payload);
+  return data;
+}
+
+export async function deleteChatMessage(session_id, index) {
+  const { data } = await api.delete("/chat/message", { data: { session_id, index } });
+  return data;
+}
+
+export async function sendChatMessageUpload(file, payload = {}) {
+  const form = new FormData();
+  form.append("file", file);
+  Object.entries(payload || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) form.append(k, String(v));
+  });
+  const { data } = await api.post("/chat/message/upload", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 180000,
+  });
   return data;
 }
 

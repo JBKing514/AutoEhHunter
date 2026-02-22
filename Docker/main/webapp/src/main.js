@@ -3,6 +3,10 @@ import { createApp } from "vue";
 import { createVuetify } from "vuetify";
 import "vuetify/styles";
 import App from "./App.vue";
+import { router } from "./router";
+import { createPinia } from "pinia";
+import MetricCard from "./components/MetricCard.vue";
+import ServiceChip from "./components/ServiceChip.vue";
 
 const vuetify = createVuetify({
   theme: {
@@ -114,4 +118,8 @@ const vuetify = createVuetify({
   },
 });
 
-createApp(App).use(vuetify).mount("#app");
+const app = createApp(App);
+const pinia = createPinia();
+app.component("MetricCard", MetricCard);
+app.component("ServiceChip", ServiceChip);
+app.use(pinia).use(router).use(vuetify).mount("#app");
