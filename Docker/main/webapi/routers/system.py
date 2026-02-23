@@ -1,7 +1,7 @@
 from typing import Any
-
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse
 
 from ..core.constants import STATIC_DIR
 from ..core.runtime_state import scheduler
@@ -10,9 +10,32 @@ from ..services.config_service import apply_runtime_timezone, ensure_dirs, resol
 from ..services.db_service import db_dsn, query_rows
 from ..services.schedule_service import sync_scheduler
 from ..services.search_service import _item_from_work
-from ..services.vision_service import warmup_siglip_model
+from ..services.vision_service import warmup_siglip_model, _embed_image_siglip
 
 router = APIRouter(tags=["system"])
+
+class ImageEmbedPayload(BaseModel):
+    image: str
+
+@router.post("/api/internal/embed/image", response_class=JSONResponse)
+def embed_image_internal(payload: ImageEmbedPayload) -> JSONResponse:
+    image_b64 = payload.image
+    if not image_b64:
+        return JSONResponse({"error": "missing image field"}, status_code=400)
+    try:
+        import base64
+        image_bytes = base64.b64decode(image_b64)
+    except Exception as e:
+        return JSONResponse({"error": f"invalid base64: {e}"}, status_code=400)
+    try:
+        cfg, _ = resolve_config()
+        model_id = str(cfg.get("SIGLIP_MODEL") or "google/siglip-so400m-patch14-384").strip()
+        vec = _embed_image_siglip(image_bytes, model_id)
+    except Exception as e:
+        return JSONResponse({"error": f"embedding failed: {e}"}, status_code=500)
+    if not vec:
+        return JSONResponse({"error": "embedding empty"}, status_code=500)
+    return JSONResponse({"embedding": vec})
 
 
 @router.on_event("startup")

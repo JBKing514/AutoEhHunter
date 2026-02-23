@@ -467,64 +467,25 @@ def _vector_literal(vec: list[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vec) + "]"
 
 
-class SiglipEncoder:
-    def __init__(self, model_name: str, device: str):
-        try:
-            import importlib
-
-            torch = importlib.import_module("torch")
-            transformers = importlib.import_module("transformers")
-            AutoModel = getattr(transformers, "AutoModel")
-            AutoProcessor = getattr(transformers, "AutoProcessor")
-        except Exception as e:
-            raise RuntimeError(
-                "SigLIP dependencies missing. Install torch + transformers + pillow. "
-                f"Original error: {e}"
-            )
-
-        self.torch = torch
-        self.device = device
-        torch_dtype = None
-        if device.startswith("cuda") and torch.cuda.is_available():
-            torch_dtype = torch.float16
-
-        self.model = AutoModel.from_pretrained(
-            model_name,
-            torch_dtype=torch_dtype,
-            low_cpu_mem_usage=True,
-        ).to(device)
-        self.processor = AutoProcessor.from_pretrained(model_name)
-        self.model.eval()
+class SiglipClient:
+    def __init__(self, base_url: str, timeout_s: int = 120):
+        self.base_url = base_url.rstrip("/")
+        self.timeout_s = timeout_s
 
     def embed_image_bytes(self, image_bytes: bytes) -> list[float]:
-        try:
-            import importlib
-
-            pil_image = importlib.import_module("PIL.Image")
-        except Exception as e:
-            raise RuntimeError(f"Pillow is required for cover embedding. Original error: {e}")
-
-        img = pil_image.open(BytesIO(image_bytes)).convert("RGB")
-        inputs = self.processor(images=img, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        with self.torch.no_grad():
-            if hasattr(self.model, "get_image_features"):
-                feats = self.model.get_image_features(**inputs)
-            else:
-                out = self.model(**inputs)
-                feats = getattr(out, "image_embeds", None)
-                if feats is None:
-                    feats = getattr(out, "pooler_output", None)
-                if feats is None:
-                    raise RuntimeError("Unexpected SigLIP output for image embedding")
-
-        if hasattr(feats, "pooler_output"):
-            feats = feats.pooler_output
-        elif hasattr(feats, "image_embeds"):
-            feats = feats.image_embeds
-
-        feats = feats / feats.norm(p=2, dim=-1, keepdim=True)
-        return feats.detach().cpu().numpy().astype("float32").tolist()[0]
+        import base64
+        b64 = base64.b64encode(image_bytes).decode("ascii")
+        r = requests.post(
+            f"{self.base_url}/api/internal/embed/image",
+            json={"image": b64},
+            timeout=self.timeout_s,
+        )
+        r.raise_for_status()
+        obj = r.json()
+        emb = obj.get("embedding")
+        if not isinstance(emb, list):
+            raise RuntimeError(f"Invalid embedding response: {obj}")
+        return [float(x) for x in emb]
 
 
 def _fetch_cover_bytes(
@@ -638,8 +599,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--sleep-seconds", type=float, default=4.0, help="Sleep seconds between EH requests")
     ap.add_argument("--cookie", default="", help="Optional Cookie header for EH/EX access")
     ap.add_argument("--user-agent", default="AutoEhHunter/1.0", help="HTTP User-Agent")
-    ap.add_argument("--siglip-model", default="google/siglip-so400m-patch14-384", help="SigLIP model for cover embedding")
-    ap.add_argument("--siglip-device", default="cpu", help="Torch device for SigLIP (cpu/cuda:0)")
+    ap.add_argument(
+        "--siglip-base",
+        default=os.getenv("WEBAPI_BASE", "http://localhost:8501"),
+        help="Base URL for image embedding API (default: http://localhost:8501)",
+    )
 
     ap.add_argument(
         "--category",
@@ -758,7 +722,7 @@ def main(argv: list[str]) -> int:
     blocked_tags = _parse_filter_values(args.exclude_tag)
     min_rating = args.min_rating if args.min_rating is None else float(args.min_rating)
 
-    siglip = SiglipEncoder(model_name=str(args.siglip_model), device=str(args.siglip_device))
+    siglip = SiglipClient(base_url=str(args.siglip_base), timeout_s=args.timeout)
 
     rows_to_upsert: list[tuple[Any, ...]] = []
     succeeded_keys: set[tuple[int, str]] = set()

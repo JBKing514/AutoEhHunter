@@ -371,61 +371,29 @@ class OpenAICompatClient:
         return [float(x) for x in emb]
 
 
-class SiglipEncoder:
-    def __init__(self, model_name: str, device: str, cuda_visible_devices: str | None = None):
-        # IMPORTANT: if you want SigLIP to run on a specific physical GPU,
-        # set cuda_visible_devices (or export CUDA_VISIBLE_DEVICES) BEFORE importing torch.
-        if cuda_visible_devices is not None and str(cuda_visible_devices).strip():
-            cvd = str(cuda_visible_devices).strip()
-            os.environ["CUDA_VISIBLE_DEVICES"] = cvd
-            # If we expose a single GPU, inside-process indexing becomes cuda:0.
-            if "," not in cvd and device.startswith("cuda:") and device != "cuda:0":
-                device = "cuda:0"
+class SiglipClient:
+    def __init__(self, base_url: str, timeout_s: int = 120):
+        self.base_url = base_url.rstrip("/")
+        self.timeout_s = timeout_s
 
-        import torch
-        from transformers import AutoModel, AutoProcessor
-
-        self.torch = torch
-        self.device = device
-
-        torch_dtype = None
-        if device.startswith("cuda") and torch.cuda.is_available():
-            torch_dtype = torch.float16
-
-        # AutoModel works, but output shapes vary across transformers versions.
-        # We handle both tensor and BaseModelOutputWithPooling below.
-        self.model = AutoModel.from_pretrained(
-            model_name,
-            torch_dtype=torch_dtype,
-            low_cpu_mem_usage=True,
-        ).to(device)
-        self.processor = AutoProcessor.from_pretrained(model_name)
-        self.model.eval()
+    def embed_image_bytes(self, image_bytes: bytes) -> list[float]:
+        import base64
+        b64 = base64.b64encode(image_bytes).decode("ascii")
+        r = requests.post(
+            f"{self.base_url}/api/internal/embed/image",
+            json={"image": b64},
+            timeout=self.timeout_s,
+        )
+        r.raise_for_status()
+        obj = r.json()
+        emb = obj.get("embedding")
+        if not isinstance(emb, list):
+            raise RuntimeError(f"Invalid embedding response: {obj}")
+        return [float(x) for x in emb]
 
     def embed_image_path(self, image_path: str) -> list[float]:
-        from PIL import Image
-
-        image = Image.open(image_path).convert("RGB")
-        inputs = self.processor(images=image, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        with self.torch.no_grad():
-            out: Any
-            if hasattr(self.model, "get_image_features"):
-                out = self.model.get_image_features(**inputs)
-            else:
-                out = self.model(**inputs)
-
-            # Some versions return a Tensor, others return an output object.
-            if isinstance(out, self.torch.Tensor):
-                feats = out
-            elif hasattr(out, "pooler_output") and out.pooler_output is not None:
-                feats = out.pooler_output
-            elif isinstance(out, dict) and "image_embeds" in out:
-                feats = out["image_embeds"]
-            else:
-                raise RuntimeError(f"Unexpected SigLIP output type: {type(out)}")
-        feats = feats / feats.norm(p=2, dim=-1, keepdim=True)
-        return feats.detach().cpu().numpy().astype("float32").tolist()[0]
+        with open(image_path, "rb") as f:
+            return self.embed_image_bytes(f.read())
 
 
 def _l2_normalize(vec: list[float]) -> list[float]:
@@ -762,19 +730,10 @@ def main(argv: list[str]) -> int:
         help="Do not delete temp media files (useful for debugging)",
     )
 
-    ap.add_argument("--siglip-model", default=os.getenv("SIGLIP_MODEL", "google/siglip-so400m-patch14-384"), help="SigLIP HF model name or local path")
     ap.add_argument(
-        "--siglip-device",
-        default=os.getenv("SIGLIP_DEVICE", "cpu"),
-        help="Torch device for SigLIP inside this process (default: cpu)",
-    )
-    ap.add_argument(
-        "--siglip-cuda-visible-devices",
-        default=os.getenv("SIGLIP_CUDA_VISIBLE_DEVICES", ""),
-        help=(
-            "Set CUDA_VISIBLE_DEVICES right before importing torch for SigLIP. "
-            "Leave empty in CPU-only mode."
-        ),
+        "--siglip-base",
+        default=os.getenv("WEBAPI_BASE", "http://localhost:8501"),
+        help="Base URL for image embedding API (default: http://localhost:8501)",
     )
     ap.add_argument(
         "--siglip-only",
@@ -838,10 +797,8 @@ def main(argv: list[str]) -> int:
             v = str(db_cfg.get("INGEST_EMB_MODEL_CUSTOM") or db_cfg.get("INGEST_EMB_MODEL") or db_cfg.get("EMB_MODEL_ID") or "").strip()
             if v:
                 args.emb_model = v
-        if not _arg_present(argv, "--siglip-model") and str(db_cfg.get("SIGLIP_MODEL", "")).strip():
-            args.siglip_model = str(db_cfg.get("SIGLIP_MODEL", "")).strip()
-        if not _arg_present(argv, "--siglip-device") and str(db_cfg.get("SIGLIP_DEVICE", "")).strip():
-            args.siglip_device = str(db_cfg.get("SIGLIP_DEVICE", "")).strip()
+        if not _arg_present(argv, "--siglip-base") and str(db_cfg.get("WEBAPI_BASE", "")).strip():
+            args.siglip_base = str(db_cfg.get("WEBAPI_BASE", "")).strip()
         if not _arg_present(argv, "--batch") and str(db_cfg.get("WORKER_BATCH", "")).strip():
             try:
                 args.batch = int(str(db_cfg.get("WORKER_BATCH", "")).strip())
@@ -910,7 +867,7 @@ def main(argv: list[str]) -> int:
     rng = random.Random(args.seed)
 
     # Lazy-init SigLIP because it is heavy.
-    siglip: SiglipEncoder | None = None
+    siglip: SiglipClient | None = None
 
     try:
         import psycopg
@@ -1056,10 +1013,9 @@ def main(argv: list[str]) -> int:
                             raise
 
                 if siglip is None:
-                    siglip = SiglipEncoder(
-                        model_name=args.siglip_model,
-                        device=args.siglip_device,
-                        cuda_visible_devices=args.siglip_cuda_visible_devices,
+                    siglip = SiglipClient(
+                        base_url=args.siglip_base,
+                        timeout_s=120,
                     )
 
                 # Visual embedding: average over sampled images, then L2 normalize.

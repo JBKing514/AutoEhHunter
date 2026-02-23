@@ -18,6 +18,7 @@ AUTH_ALLOW_PATHS = {
     "/api/auth/bootstrap",
     "/api/auth/register-admin",
     "/api/auth/login",
+    "/api/internal/embed/image",
 }
 
 
