@@ -20,13 +20,30 @@
                       :title="s.title"
                       :active="chatSessionId === s.id"
                       @click="chatSessionId = s.id"
-                    />
+                    >
+                      <template #append>
+                        <v-btn
+                          size="x-small"
+                          icon="mdi-delete-outline"
+                          variant="text"
+                          color="error"
+                          @click.stop="removeChatSession(s.id)"
+                        />
+                      </template>
+                    </v-list-item>
                   </v-list>
                 </template>
               </v-card>
             </v-col>
             <v-col cols="12" class="chat-main-col" :class="{ expanded: chatSidebarCollapsed }">
-              <v-card class="pa-3 chat-main" variant="flat">
+              <v-card
+                class="pa-3 chat-main"
+                variant="flat"
+                :class="{ 'chat-drop-active': chatImageDropActive }"
+                @dragover.prevent="chatImageDropActive = true"
+                @dragleave.prevent="chatImageDropActive = false"
+                @drop.prevent="onChatImageDrop"
+              >
                 <div class="d-flex justify-end mb-2" v-if="chatSidebarCollapsed">
                   <v-btn size="small" variant="text" prepend-icon="mdi-format-list-bulleted" @click="chatSidebarCollapsed = false">{{ t('chat.sessions') }}</v-btn>
                 </div>
@@ -109,6 +126,11 @@ import { useChatStore } from "../stores/chatStore";
 export default {
   setup() {
     return useChatStore();
+  },
+  mounted() {
+    if (typeof this.loadChatSessions === "function") {
+      this.loadChatSessions().catch(() => null);
+    }
   },
   watch: {
     chatSessionId: {

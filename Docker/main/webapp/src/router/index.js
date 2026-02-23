@@ -22,6 +22,7 @@ const routes = [
           { path: "search", name: "settings-search", component: () => import("../views/settings/SearchSettingsPage.vue") },
           { path: "recommend", name: "settings-recommend", component: () => import("../views/settings/RecommendSettingsPage.vue") },
           { path: "llm", name: "settings-llm", component: () => import("../views/settings/LlmSettingsPage.vue") },
+          { path: "plugins", name: "settings-plugins", component: () => import("../views/settings/PluginsSettingsPage.vue") },
           { path: "other", name: "settings-other", component: () => import("../views/settings/OtherSettingsPage.vue") },
           { path: "developer", name: "settings-developer", component: () => import("../views/settings/DeveloperSettingsPage.vue") },
         ],

@@ -18,7 +18,7 @@ import { useToastStore } from "./useToastStore";
 export const useAppStore = defineStore("app", () => {
   const toast = useToastStore();
 
-  const showAuthGate = ref(true);
+  const showAuthGate = ref(false);
   const showSetupWizard = ref(false);
   const authConfigured = ref(true);
   const authSubmitting = ref(false);
@@ -39,6 +39,8 @@ export const useAppStore = defineStore("app", () => {
 
   async function bootstrap() {
     authError.value = "";
+    authReady.value = false;
+    showAuthGate.value = false;
     try {
       const b = await getAuthBootstrap();
       authConfigured.value = !!b.configured;

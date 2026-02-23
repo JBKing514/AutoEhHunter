@@ -32,7 +32,11 @@ api.interceptors.response.use(
 );
 
 export async function getHealth() {
-  const { data } = await api.get("/health");
+  const { data } = await api.get("/health", {
+    timeout: 8000,
+    params: { t: Date.now() },
+    headers: { "Cache-Control": "no-cache" },
+  });
   return data;
 }
 
@@ -217,6 +221,60 @@ export async function getHomeRecommend(params = {}) {
   return data;
 }
 
+export async function getRecommendItems(params = {}) {
+  const { data } = await api.get("/recommend/items", { params });
+  return data;
+}
+
+export async function postRecommendTouch(payload = {}) {
+  const { data } = await api.post("/home/recommend/touch", payload || {});
+  return data;
+}
+
+export async function postRecommendTouchKeepalive(payload = {}) {
+  try {
+    const res = await fetch("/api/home/recommend/touch", {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        "x-csrf-token": csrfToken || "",
+      },
+      body: JSON.stringify(payload || {}),
+    });
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("aeh-auth-required"));
+    }
+    if (!res.ok) {
+      throw new Error(`touch failed: HTTP ${res.status}`);
+    }
+    return await res.json();
+  } catch {
+    return postRecommendTouch(payload);
+  }
+}
+
+export async function clearRecommendTouches() {
+  const { data } = await api.delete("/home/recommend/touch");
+  return data;
+}
+
+export async function clearRecommendProfile() {
+  const { data } = await api.delete("/home/recommend/profile");
+  return data;
+}
+
+export async function postRecommendImpressions(payload = {}) {
+  const { data } = await api.post("/home/recommend/impressions", payload || {});
+  return data;
+}
+
+export async function postRecommendDislike(payload = {}) {
+  const { data } = await api.post("/home/recommend/dislike", payload || {});
+  return data;
+}
+
 export async function searchByImage(payload = {}) {
   const { data } = await api.post("/home/search/image", payload);
   return data;
@@ -369,6 +427,16 @@ export async function editChatMessage(payload = {}) {
 
 export async function deleteChatMessage(session_id, index) {
   const { data } = await api.delete("/chat/message", { data: { session_id, index } });
+  return data;
+}
+
+export async function listChatSessions() {
+  const { data } = await api.get("/chat/sessions");
+  return data;
+}
+
+export async function deleteChatSession(session_id) {
+  const { data } = await api.delete("/chat/session", { params: { session_id } });
   return data;
 }
 

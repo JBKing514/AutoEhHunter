@@ -7,6 +7,7 @@ import { router } from "./router";
 import { createPinia } from "pinia";
 import MetricCard from "./components/MetricCard.vue";
 import ServiceChip from "./components/ServiceChip.vue";
+import { registerSW } from "virtual:pwa-register";
 
 const vuetify = createVuetify({
   theme: {
@@ -99,17 +100,19 @@ const vuetify = createVuetify({
       },
       customLight: {
         colors: {
-          primary: "#6750A4",
-          secondary: "#625B71",
+          primary: "#2563eb",
+          secondary: "#0ea5e9",
+          accent: "#f59e0b",
           surface: "#ffffff",
-          background: "#f7f2fa",
+          background: "#eff6ff",
         },
       },
       customDark: {
         dark: true,
         colors: {
-          primary: "#d0bcff",
-          secondary: "#ccc2dc",
+          primary: "#60a5fa",
+          secondary: "#38bdf8",
+          accent: "#fbbf24",
           surface: "#1d1b20",
           background: "#141218",
         },
@@ -123,3 +126,7 @@ const pinia = createPinia();
 app.component("MetricCard", MetricCard);
 app.component("ServiceChip", ServiceChip);
 app.use(pinia).use(router).use(vuetify).mount("#app");
+
+registerSW({
+  immediate: true,
+});

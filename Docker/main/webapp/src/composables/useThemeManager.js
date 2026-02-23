@@ -19,14 +19,15 @@ export function useThemeManager(configRef) {
     const useCustom = preset === "custom";
 
     if (useCustom) {
-      const primary = ensureHexColor(config.DATA_UI_THEME_CUSTOM_PRIMARY, "#6750A4");
-      const secondary = ensureHexColor(config.DATA_UI_THEME_CUSTOM_SECONDARY, "#625B71");
-      const accent = ensureHexColor(config.DATA_UI_THEME_CUSTOM_ACCENT, "#7D5260");
+      const primary = ensureHexColor(config.DATA_UI_THEME_CUSTOM_PRIMARY, "#2563eb");
+      const secondary = ensureHexColor(config.DATA_UI_THEME_CUSTOM_SECONDARY, "#0ea5e9");
+      const accent = ensureHexColor(config.DATA_UI_THEME_CUSTOM_ACCENT, "#f59e0b");
       themes.customLight = {
         dark: false,
         colors: {
           primary,
           secondary,
+          accent,
           info: accent,
           surface: "#ffffff",
           background: shiftHex(primary, 235),
@@ -37,6 +38,7 @@ export function useThemeManager(configRef) {
         colors: {
           primary: shiftHex(primary, 72),
           secondary: shiftHex(secondary, 72),
+          accent: shiftHex(accent, 72),
           info: shiftHex(accent, 72),
           surface: "#1d1b20",
           background: asBool(config.DATA_UI_THEME_OLED) ? "#000000" : "#141218",

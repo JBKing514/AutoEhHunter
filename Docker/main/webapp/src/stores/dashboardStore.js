@@ -1,15 +1,18 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import { getHomeHistory, getHomeRecommend, getHomeTagSuggest, searchByImage, searchByImageUpload, searchByText } from "../api";
+import { getHomeHistory, getHomeRecommend, getHomeTagSuggest, getRecommendItems, postRecommendDislike, postRecommendImpressions, postRecommendTouchKeepalive, searchByImage, searchByImageUpload, searchByText } from "../api";
 
 export const useDashboardStore = defineStore("dashboard", () => {
-  const homeTab = ref("history");
+  const homeTab = ref("recommend");
   const homeViewMode = ref("wide");
   const homeSearchQuery = ref("");
   const imageSearchQuery = ref("");
   const homeSentinel = ref(null);
   const homeHistory = ref({ items: [], cursor: "", hasMore: true, loading: false, error: "" });
   const homeRecommend = ref({ items: [], cursor: "", hasMore: true, loading: false, error: "" });
+  const homeRecommendDepth = ref(1);
+  const homeRecommendCanExpand = ref(true);
+  const homeRecommendJitterNonce = ref(0);
   const homeSearchState = ref({ items: [], cursor: "", hasMore: false, loading: false, error: "" });
   const homeFiltersOpen = ref(false);
   const homeFilters = ref({ categories: [], tags: [] });
@@ -53,7 +56,14 @@ export const useDashboardStore = defineStore("dashboard", () => {
   let _formatDateMinute = (v) => String(v || "-");
 
   let touchPreviewTimer = null;
+  let touchDislikeTriggered = false;
   let homeObserver = null;
+  let recommendExposureObserver = null;
+  const recommendExposureQueue = new Map();
+  const recommendObservedKeys = new Set();
+  let recommendExposureTimer = null;
+  const recommendTouchStamp = new Map();
+  const dislikedVisualMap = ref({});
 
   const activeHomeState = computed(() => {
     if (homeTab.value === "history") return homeHistory.value;
@@ -192,10 +202,16 @@ export const useDashboardStore = defineStore("dashboard", () => {
   }
 
   function onCardTouchStart(item) {
+    if (homeTab.value !== "recommend" || String(item?.source || "") !== "eh_works") {
+      touchDislikeTriggered = false;
+      return;
+    }
     if (touchPreviewTimer) clearTimeout(touchPreviewTimer);
+    touchDislikeTriggered = false;
     touchPreviewTimer = setTimeout(() => {
-      mobilePreviewItem.value = item || null;
-    }, 1000);
+      touchDislikeTriggered = true;
+      markRecommendDislike(item, { removeDelayMs: 650 }).catch(() => null);
+    }, 500);
   }
 
   function onCardTouchEnd() {
@@ -210,12 +226,170 @@ export const useDashboardStore = defineStore("dashboard", () => {
   }
 
   function onCoverClick(item) {
+    if (touchDislikeTriggered) {
+      touchDislikeTriggered = false;
+      return;
+    }
     if (!isMobile.value) return;
     mobilePreviewItem.value = item || null;
   }
 
   function onMobileDetailLinkClick() {
     mobilePreviewItem.value = null;
+  }
+
+  function setDislikedVisual(item, on = true) {
+    const key = recommendExposureKey(item);
+    if (!key) return;
+    dislikedVisualMap.value = {
+      ...(dislikedVisualMap.value || {}),
+      [key]: !!on,
+    };
+  }
+
+  function isRecommendDisliked(item) {
+    const key = recommendExposureKey(item);
+    return !!(key && dislikedVisualMap.value && dislikedVisualMap.value[key]);
+  }
+
+  function recommendExposureKey(item) {
+    const gid = Number(item?.gid || 0);
+    const token = String(item?.token || "").trim().toLowerCase();
+    if (!gid || !token) return "";
+    return `${gid}:${token}`;
+  }
+
+  function flushRecommendImpressions() {
+    if (!recommendExposureQueue.size) return;
+    const items = Array.from(recommendExposureQueue.values());
+    recommendExposureQueue.clear();
+    postRecommendImpressions({ items, weight: 1.0 }).catch(() => null);
+  }
+
+  function queueRecommendImpression(item) {
+    if (String(item?.source || "") !== "eh_works") return;
+    const key = recommendExposureKey(item);
+    if (!key || recommendExposureQueue.has(key)) return;
+    recommendExposureQueue.set(key, {
+      gid: Number(item?.gid || 0),
+      token: String(item?.token || ""),
+      eh_url: String(item?.eh_url || ""),
+      ex_url: String(item?.ex_url || ""),
+    });
+    if (recommendExposureTimer) clearTimeout(recommendExposureTimer);
+    recommendExposureTimer = setTimeout(() => {
+      flushRecommendImpressions();
+      recommendExposureTimer = null;
+    }, 2000);
+  }
+
+  function ensureRecommendExposureObserver() {
+    if (recommendExposureObserver || typeof IntersectionObserver === "undefined") return;
+    recommendExposureObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries || []) {
+        if (!entry?.isIntersecting) continue;
+        const el = entry.target;
+        const payload = el?.__aehRecommendItem;
+        if (payload) queueRecommendImpression(payload);
+        if (recommendExposureObserver) recommendExposureObserver.unobserve(el);
+      }
+    }, { root: null, rootMargin: "0px", threshold: 0.35 });
+  }
+
+  function setRecommendExposureRef(el, item) {
+    if (!el || !item) return;
+    if (homeTab.value !== "recommend") return;
+    if (String(item?.source || "") !== "eh_works") return;
+    const key = recommendExposureKey(item);
+    if (!key || recommendObservedKeys.has(key)) return;
+    recommendObservedKeys.add(key);
+    ensureRecommendExposureObserver();
+    el.__aehRecommendItem = item;
+    recommendExposureObserver?.observe(el);
+  }
+
+  function resetRecommendExposureObserver() {
+    if (recommendExposureObserver) {
+      recommendExposureObserver.disconnect();
+      recommendExposureObserver = null;
+    }
+    recommendObservedKeys.clear();
+    if (recommendExposureTimer) {
+      clearTimeout(recommendExposureTimer);
+      recommendExposureTimer = null;
+    }
+    flushRecommendImpressions();
+  }
+
+  async function onRecommendItemOpen(item) {
+    const src = String(item?.source || "").trim();
+    if (src !== "eh_works") return;
+    const gid = Number(item?.gid || 0);
+    const token = String(item?.token || "").trim();
+    if (!gid || !token) return;
+    const dedupeKey = `${gid}:${token.toLowerCase()}`;
+    const now = Date.now();
+    const prev = Number(recommendTouchStamp.get(dedupeKey) || 0);
+    if (now - prev < 1500) return;
+    recommendTouchStamp.set(dedupeKey, now);
+    postRecommendTouchKeepalive({
+      gid,
+      token,
+      eh_url: String(item?.eh_url || ""),
+      ex_url: String(item?.ex_url || ""),
+      weight: 1.0,
+    }).catch(() => null);
+  }
+
+  async function markRecommendDislike(item, options = {}) {
+    if (String(item?.source || "") !== "eh_works") return;
+    const gid = Number(item?.gid || 0);
+    const token = String(item?.token || "").trim();
+    if (!gid || !token) return;
+    const removeDelayMs = Math.max(150, Math.min(1500, Number(options.removeDelayMs || 450)));
+    setDislikedVisual(item, true);
+    try {
+      await postRecommendDislike({
+        gid,
+        token,
+        eh_url: String(item?.eh_url || ""),
+        ex_url: String(item?.ex_url || ""),
+        weight: 1.0,
+      });
+      setTimeout(() => {
+        homeRecommend.value.items = (homeRecommend.value.items || []).filter((x) => {
+          return !(Number(x?.gid || 0) === gid && String(x?.token || "").trim().toLowerCase() === token.toLowerCase());
+        });
+        setDislikedVisual(item, false);
+        if (mobilePreviewItem.value && Number(mobilePreviewItem.value?.gid || 0) === gid && String(mobilePreviewItem.value?.token || "").trim().toLowerCase() === token.toLowerCase()) {
+          mobilePreviewItem.value = null;
+        }
+      }, removeDelayMs);
+      _notify(_t("home.recommend.disliked"), "info");
+    } catch (e) {
+      setDislikedVisual(item, false);
+      _notify(String(e?.response?.data?.detail || e), "warning");
+    }
+  }
+
+  async function shuffleRecommendBatch() {
+    if (homeTab.value !== "recommend") return;
+    homeRecommendJitterNonce.value = Number(homeRecommendJitterNonce.value || 0) + 1;
+    await resetHomeFeed();
+  }
+
+  async function tryExpandRecommendDepth() {
+    if (homeTab.value !== "recommend") return false;
+    if (!homeRecommendCanExpand.value) return false;
+    const nextDepth = Number(homeRecommendDepth.value || 1) + 1;
+    if (nextDepth > 8) {
+      homeRecommendCanExpand.value = false;
+      return false;
+    }
+    homeRecommendDepth.value = nextDepth;
+    _notify(_t("home.recommend.expand_loading"), "info");
+    await loadHomeFeed(true);
+    return true;
   }
 
   function updateViewportFlags() {
@@ -341,17 +515,33 @@ export const useDashboardStore = defineStore("dashboard", () => {
     const state = activeHomeState.value;
     if (homeTab.value === "search") return;
     if (state.loading) return;
-    if (!state.hasMore && !reset) return;
+    if (!state.hasMore && !reset) {
+      if (homeTab.value === "recommend") {
+        await tryExpandRecommendDepth();
+      }
+      return;
+    }
     state.loading = true;
     state.error = "";
     try {
       const params = { limit: 24 };
       if (!reset && state.cursor) params.cursor = state.cursor;
-      const res = homeTab.value === "history" ? await getHomeHistory(params) : await getHomeRecommend(params);
+      if (homeTab.value === "recommend") {
+        params.depth = Number(homeRecommendDepth.value || 1);
+        params.jitter = Number(homeRecommendJitterNonce.value || 0) > 0;
+        params.jitter_nonce = String(homeRecommendJitterNonce.value || 0);
+      }
+      const res = homeTab.value === "history"
+        ? await getHomeHistory(params)
+        : (Number(homeRecommendDepth.value || 1) > 1 ? await getRecommendItems(params) : await getHomeRecommend(params));
       const rows = res.items || [];
       state.items = reset ? rows : [...state.items, ...rows];
       state.cursor = res.next_cursor || "";
       state.hasMore = !!res.has_more;
+      if (homeTab.value === "recommend") {
+        const meta = res.meta || {};
+        homeRecommendCanExpand.value = !!meta.can_expand_more;
+      }
     } catch (e) {
       state.error = String(e?.response?.data?.detail || e);
     } finally {
@@ -361,6 +551,12 @@ export const useDashboardStore = defineStore("dashboard", () => {
 
   async function resetHomeFeed() {
     const target = activeHomeState.value;
+    if (homeTab.value === "recommend") {
+      homeRecommendDepth.value = 1;
+      homeRecommendCanExpand.value = true;
+      resetRecommendExposureObserver();
+      dislikedVisualMap.value = {};
+    }
     target.items = [];
     target.cursor = "";
     target.hasMore = homeTab.value !== "search";
@@ -505,6 +701,9 @@ export const useDashboardStore = defineStore("dashboard", () => {
     homeSentinel,
     homeHistory,
     homeRecommend,
+    homeRecommendDepth,
+    homeRecommendCanExpand,
+    homeRecommendJitterNonce,
     homeSearchState,
     homeFiltersOpen,
     homeFilters,
@@ -541,6 +740,13 @@ export const useDashboardStore = defineStore("dashboard", () => {
     onMobilePreviewToggle,
     onCoverClick,
     onMobileDetailLinkClick,
+    onRecommendItemOpen,
+    markRecommendDislike,
+    isRecommendDisliked,
+    setRecommendExposureRef,
+    resetRecommendExposureObserver,
+    tryExpandRecommendDepth,
+    shuffleRecommendBatch,
     updateViewportFlags,
     onWindowScroll,
     runQuickSearch,

@@ -1,7 +1,12 @@
+html {
+  --aeh-page-zoom: 1;
+  font-size: calc(16px * var(--aeh-page-zoom));
+}
+
 .v-main {
   background:
-    radial-gradient(circle at 8% 12%, rgba(0, 106, 106, 0.12), transparent 28%),
-    radial-gradient(circle at 90% 8%, rgba(116, 91, 53, 0.1), transparent 25%),
+    radial-gradient(circle at 8% 12%, rgba(var(--v-theme-primary), 0.14), transparent 30%),
+    radial-gradient(circle at 90% 8%, rgba(var(--v-theme-secondary), 0.12), transparent 28%),
     rgb(var(--v-theme-background));
 }
 
@@ -69,9 +74,9 @@ canvas {
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at 18% 20%, rgba(56, 189, 248, 0.18), transparent 42%),
-    radial-gradient(circle at 82% 80%, rgba(74, 222, 128, 0.18), transparent 46%),
-    rgba(15, 23, 42, 0.78);
+    radial-gradient(circle at 18% 20%, rgba(var(--v-theme-primary), 0.2), transparent 42%),
+    radial-gradient(circle at 82% 80%, rgba(var(--v-theme-secondary), 0.2), transparent 46%),
+    rgba(var(--v-theme-surface), 0.84);
 }
 
 .cover-bg-blur {
@@ -91,6 +96,30 @@ canvas {
   height: 100%;
   object-fit: contain;
   display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.cover-guard {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.cover-ph.disliked .cover-img {
+  filter: blur(5px) saturate(0.7);
+}
+
+.dislike-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(12, 16, 24, 0.32);
 }
 
 .home-card.compact .cover-ph {
@@ -160,6 +189,7 @@ canvas {
   max-height: min(60vh, 520px);
   border-radius: 8px;
   overflow: auto;
+  position: relative;
   background: rgba(15, 23, 42, 0.9);
   display: flex;
   align-items: center;
@@ -173,6 +203,19 @@ canvas {
   height: auto;
   object-fit: contain;
   display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.hover-dislike-banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px;
+  display: flex;
+  justify-content: center;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.52), rgba(0, 0, 0, 0.08));
 }
 
 .hover-fallback {
@@ -295,6 +338,11 @@ canvas {
   background: rgba(var(--v-theme-primary), 0.08);
 }
 
+.chat-drop-active {
+  outline: 2px dashed rgba(var(--v-theme-primary), 0.7);
+  background: rgba(var(--v-theme-primary), 0.05) !important;
+}
+
 .model-log-view {
   max-height: 140px;
   overflow: auto;
@@ -363,8 +411,8 @@ canvas {
 .auth-gate-wrap {
   min-height: 100vh;
   background:
-    radial-gradient(circle at 12% 20%, rgba(29, 78, 216, 0.18), transparent 32%),
-    radial-gradient(circle at 82% 78%, rgba(15, 118, 110, 0.16), transparent 35%),
+    radial-gradient(circle at 12% 20%, rgba(var(--v-theme-primary), 0.2), transparent 34%),
+    radial-gradient(circle at 82% 78%, rgba(var(--v-theme-secondary), 0.18), transparent 35%),
     rgb(var(--v-theme-background));
 }
 

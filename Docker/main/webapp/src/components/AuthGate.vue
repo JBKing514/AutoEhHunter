@@ -1,7 +1,14 @@
 <template>
-  <v-dialog :model-value="app.showAuthGate" persistent fullscreen transition="dialog-bottom-transition">
+  <v-dialog :model-value="visible" persistent fullscreen :transition="false">
     <v-card class="auth-gate-wrap d-flex align-center justify-center">
-      <v-sheet class="auth-gate-card pa-6" rounded="xl" elevation="8">
+      <v-sheet v-if="!app.authReady" class="auth-gate-card pa-8 text-center" rounded="xl" elevation="8">
+        <div class="d-flex justify-center mb-4">
+          <img v-if="logo" :src="logo" alt="AutoEhHunter" class="auth-logo" />
+        </div>
+        <v-progress-circular indeterminate color="primary" size="34" class="mb-3" />
+        <div class="text-body-2 text-medium-emphasis">{{ t('auth.checking') }}</div>
+      </v-sheet>
+      <v-sheet v-else class="auth-gate-card pa-6" rounded="xl" elevation="8">
         <div class="d-flex justify-center mb-3">
           <img v-if="logo" :src="logo" alt="AutoEhHunter" class="auth-logo" />
         </div>
@@ -22,7 +29,7 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useAppStore } from "../stores/appStore";
 
 const props = defineProps({
@@ -30,6 +37,7 @@ const props = defineProps({
   t: { type: Function, required: true },
 });
 const app = useAppStore();
+const visible = computed(() => !app.authReady || app.showAuthGate);
 
 const username = ref("");
 const password = ref("");

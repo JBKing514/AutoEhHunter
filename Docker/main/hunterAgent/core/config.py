@@ -3,13 +3,22 @@ import base64
 from dataclasses import dataclass
 from pathlib import Path
 
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
 
 def _get_config_cipher_key() -> bytes | None:
     key_env = os.getenv("DATA_UI_CONFIG_CRYPT_KEY", "").strip()
     if key_env:
         if len(key_env) == 44 and key_env.endswith("="):
             return key_env.encode("ascii")
-        return base64.urlsafe_b64encode(key_env.encode("utf-8")[:32].ljust(32, b"0"))
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"AutoEhHunter.ConfigCipher.Salt.v1",
+            info=b"AutoEhHunter.ConfigCipher.Fernet.v1",
+        )
+        return base64.urlsafe_b64encode(hkdf.derive(key_env.encode("utf-8")))
 
     key_candidates = [
         Path("/app/runtime/webui/.app_config.key"),
@@ -24,18 +33,36 @@ def _get_config_cipher_key() -> bytes | None:
     return None
 
 
+def _get_config_cipher_key_legacy() -> bytes | None:
+    key_env = os.getenv("DATA_UI_CONFIG_CRYPT_KEY", "").strip()
+    if not key_env or (len(key_env) == 44 and key_env.endswith("=")):
+        return None
+    try:
+        return base64.urlsafe_b64encode(key_env.encode("utf-8")[:32].ljust(32, b"0"))
+    except Exception:
+        return None
+
+
 def _decrypt_secret_if_needed(value: str) -> str:
     s = str(value or "").strip()
     if not s.startswith("enc:v1:"):
         return s
     key = _get_config_cipher_key()
-    if not key:
+    legacy_key = _get_config_cipher_key_legacy()
+    if not key and not legacy_key:
         return ""
     try:
         from cryptography.fernet import Fernet
 
         token = s[len("enc:v1:") :]
-        return Fernet(key).decrypt(token.encode("utf-8")).decode("utf-8")
+        if key:
+            try:
+                return Fernet(key).decrypt(token.encode("utf-8")).decode("utf-8")
+            except Exception:
+                pass
+        if legacy_key:
+            return Fernet(legacy_key).decrypt(token.encode("utf-8")).decode("utf-8")
+        return ""
     except Exception:
         return ""
 

@@ -55,6 +55,9 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "REC_STRICTNESS": {"type": "float", "default": 0.55, "min": 0.0, "max": 1.0},
     "REC_CANDIDATE_LIMIT": {"type": "int", "default": 400, "min": 50, "max": 2000},
     "REC_TAG_FLOOR_SCORE": {"type": "float", "default": 0.08, "min": 0.0, "max": 0.4},
+    "REC_TOUCH_PENALTY_PCT": {"type": "int", "default": 35, "min": 0, "max": 100},
+    "REC_IMPRESSION_PENALTY_PCT": {"type": "int", "default": 3, "min": 0, "max": 100},
+    "REC_DYNAMIC_EXPAND_ENABLED": {"type": "bool", "default": True},
     "SEARCH_TEXT_WEIGHT": {"type": "float", "default": 0.6, "min": 0.0, "max": 1.0},
     "SEARCH_VISUAL_WEIGHT": {"type": "float", "default": 0.4, "min": 0.0, "max": 1.0},
     "SEARCH_MIXED_TEXT_WEIGHT": {"type": "float", "default": 0.5, "min": 0.0, "max": 1.0},
@@ -140,6 +143,20 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
         "type": "text",
         "default": "你是意图与参数提取器。请根据用户文本输出一个JSON对象，不要输出任何额外文字。\nJSON schema:\n{\n  \"intent\": \"SEARCH|PROFILE|REPORT|RECOMMEND|CHAT\",\n  \"search_mode\": \"auto|plot|visual|mixed|null\",\n  \"search_k\": number|null,\n  \"search_eh_scope\": \"mixed|external_only|internal_only|null\",\n  \"search_eh_min_results\": number|null,\n  \"profile_days\": number|null,\n  \"profile_target\": \"reading|inventory|null\",\n  \"report_type\": \"daily|weekly|monthly|full|null\",\n  \"recommend_k\": number|null,\n  \"recommend_candidate_hours\": number|null,\n  \"recommend_profile_days\": number|null,\n  \"recommend_explore\": boolean|null\n}\n规则：\n1) SEARCH: 找书、搜图、相似作品、按剧情/按画风检索。\n2) SEARCH 的 eh 参数：默认 mixed；若用户强调\"只看库内/本地库\"设 internal_only；若强调\"全要外网/只看外网/库外\"设 external_only。\n3) SEARCH 的 search_eh_min_results 可提取则提取，不确定填 null。\n4) PROFILE: 用户画像/偏好分析。可提取天数（如7天、30天、最近一月、全部）；如果收到\"全部\"字段则按365处理。\n5) REPORT: 日报/周报/月报/全量报告。\n6) RECOMMEND: 用户要求推荐作品（如\"按口味推荐\"），并提取推荐参数，将类似'基于最近一周/x天口味'中的时间填入recommend_profile_days，当用户提到时间范围（类似查询范围，时间范围）时，将用户提到的时间转换成小时填入recommend_candidate_hours。\n7) 其余为 CHAT。\n8) 当字段不确定时填 null，不要瞎编。",
     },
+    "CHAT_CUSTOM_PERSONA": {
+        "type": "text",
+        "default": "你是一个智能画廊管理助手，请客观简明地回答问题。",
+    },
+    # ── Memory switches / intensity ──────────────────────────────────────────
+    "MEMORY_SHORT_TERM_ENABLED": {"type": "bool", "default": True},
+    "MEMORY_LONG_TERM_ENABLED": {"type": "bool", "default": True},
+    "MEMORY_SEMANTIC_ENABLED": {"type": "bool", "default": True},
+    # How many recent turns to include in context (short-term window)
+    "MEMORY_SHORT_TERM_LIMIT": {"type": "int", "default": 12, "min": 2, "max": 60},
+    # How many long-term read-history tags to surface
+    "MEMORY_LONG_TERM_TOP_TAGS": {"type": "int", "default": 8, "min": 0, "max": 30},
+    # How many semantic-memory facts to inject
+    "MEMORY_SEMANTIC_TOP_FACTS": {"type": "int", "default": 8, "min": 0, "max": 20},
 }
 
 TASK_COMMANDS = {

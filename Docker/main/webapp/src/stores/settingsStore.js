@@ -1,6 +1,8 @@
 import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import {
+  clearRecommendProfile,
+  clearRecommendTouches,
   clearRuntimeDeps,
   clearSiglip,
   clearThumbCache,
@@ -47,7 +49,10 @@ export const useSettingsStore = defineStore("settings", () => {
   const thumbCacheStats = ref({ files: 0, mb: 0, latest_at: "-" });
   const translationStatus = ref({ repo: "", head_sha: "", fetched_at: "-", manual_file: { path: "", exists: false, size: 0, updated_at: "-" } });
   const translationUploadRef = ref(null);
-  const modelStatus = ref({ siglip: { path: "", size_mb: 0 } });
+  const modelStatus = ref({
+    siglip: { path: "", size_mb: 0, usable: false },
+    runtime_deps: { path: "", size_mb: 0, ready: false },
+  });
   const siglipDownload = ref({ task_id: "", status: "", progress: 0, stage: "", error: "", logs: [] });
   const cookieParts = ref({ ipb_member_id: "", ipb_pass_hash: "", sk: "", igneous: "" });
   const ehFilterTags = ref([]);
@@ -170,6 +175,9 @@ export const useSettingsStore = defineStore("settings", () => {
       REC_STRICTNESS: "settings.rec.strictness",
       REC_CANDIDATE_LIMIT: "settings.rec.candidate_limit",
       REC_TAG_FLOOR_SCORE: "settings.rec.tag_floor",
+      REC_TOUCH_PENALTY_PCT: "settings.rec.touch_penalty_pct",
+      REC_IMPRESSION_PENALTY_PCT: "settings.rec.impression_penalty_pct",
+      REC_DYNAMIC_EXPAND_ENABLED: "settings.rec.dynamic_expand_enabled",
       SEARCH_TEXT_WEIGHT: "settings.search.text_weight",
       SEARCH_VISUAL_WEIGHT: "settings.search.visual_weight",
       SEARCH_MIXED_TEXT_WEIGHT: "settings.search.mixed_text_weight",
@@ -195,6 +203,8 @@ export const useSettingsStore = defineStore("settings", () => {
       SEARCH_WEIGHT_MIXED_TEXT: "settings.search.weight_mixed_text",
       SEARCH_WEIGHT_MIXED_EH_TEXT: "settings.search.weight_mixed_eh_text",
       SEARCH_TAG_FUZZY_THRESHOLD: "settings.search.fuzzy_threshold",
+      TEXT_INGEST_PRUNE_NOT_SEEN: "settings.text_ingest.prune",
+      WORKER_ONLY_MISSING: "settings.worker.only_missing",
       TAG_TRANSLATION_REPO: "settings.translation.repo",
       TAG_TRANSLATION_AUTO_UPDATE_HOURS: "settings.translation.auto_update_hours",
       LRR_READS_HOURS: "settings.lrr.reads_hours",
@@ -228,6 +238,12 @@ export const useSettingsStore = defineStore("settings", () => {
       SIGLIP_MODEL: "settings.provider.siglip_model",
       WORKER_BATCH: "settings.provider.worker_batch",
       WORKER_SLEEP: "settings.provider.worker_sleep",
+      MEMORY_SHORT_TERM_ENABLED: "settings.memory.short_term_enabled",
+      MEMORY_LONG_TERM_ENABLED: "settings.memory.long_term_enabled",
+      MEMORY_SEMANTIC_ENABLED: "settings.memory.semantic_enabled",
+      MEMORY_SHORT_TERM_LIMIT: "settings.memory.short_term_limit",
+      MEMORY_LONG_TERM_TOP_TAGS: "settings.memory.long_term_top_tags",
+      MEMORY_SEMANTIC_TOP_FACTS: "settings.memory.semantic_top_facts",
     };
     const tk = map[key];
     return tk ? t(tk) : key;
@@ -343,9 +359,25 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!config.value.DATA_UI_THEME_PRESET) config.value.DATA_UI_THEME_PRESET = "modern";
     if (config.value.DATA_UI_DEVELOPER_MODE === undefined) config.value.DATA_UI_DEVELOPER_MODE = false;
     if (!config.value.DATA_UI_TIMEZONE) config.value.DATA_UI_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-    if (!config.value.DATA_UI_THEME_CUSTOM_PRIMARY) config.value.DATA_UI_THEME_CUSTOM_PRIMARY = "#6750A4";
-    if (!config.value.DATA_UI_THEME_CUSTOM_SECONDARY) config.value.DATA_UI_THEME_CUSTOM_SECONDARY = "#625B71";
-    if (!config.value.DATA_UI_THEME_CUSTOM_ACCENT) config.value.DATA_UI_THEME_CUSTOM_ACCENT = "#7D5260";
+    if (!config.value.DATA_UI_THEME_CUSTOM_PRIMARY) config.value.DATA_UI_THEME_CUSTOM_PRIMARY = "#2563eb";
+    if (!config.value.DATA_UI_THEME_CUSTOM_SECONDARY) config.value.DATA_UI_THEME_CUSTOM_SECONDARY = "#0ea5e9";
+    if (!config.value.DATA_UI_THEME_CUSTOM_ACCENT) config.value.DATA_UI_THEME_CUSTOM_ACCENT = "#f59e0b";
+    if (config.value.REC_TOUCH_PENALTY_PCT === undefined || config.value.REC_TOUCH_PENALTY_PCT === null || config.value.REC_TOUCH_PENALTY_PCT === "") {
+      config.value.REC_TOUCH_PENALTY_PCT = 35;
+    }
+    if (config.value.REC_IMPRESSION_PENALTY_PCT === undefined || config.value.REC_IMPRESSION_PENALTY_PCT === null || config.value.REC_IMPRESSION_PENALTY_PCT === "") {
+      config.value.REC_IMPRESSION_PENALTY_PCT = 3;
+    }
+    if (config.value.REC_DYNAMIC_EXPAND_ENABLED === undefined) {
+      config.value.REC_DYNAMIC_EXPAND_ENABLED = true;
+    }
+    // Memory defaults
+    if (config.value.MEMORY_SHORT_TERM_ENABLED === undefined) config.value.MEMORY_SHORT_TERM_ENABLED = true;
+    if (config.value.MEMORY_LONG_TERM_ENABLED === undefined) config.value.MEMORY_LONG_TERM_ENABLED = true;
+    if (config.value.MEMORY_SEMANTIC_ENABLED === undefined) config.value.MEMORY_SEMANTIC_ENABLED = true;
+    if (!config.value.MEMORY_SHORT_TERM_LIMIT) config.value.MEMORY_SHORT_TERM_LIMIT = 12;
+    if (config.value.MEMORY_LONG_TERM_TOP_TAGS === undefined || config.value.MEMORY_LONG_TERM_TOP_TAGS === null || config.value.MEMORY_LONG_TERM_TOP_TAGS === "") config.value.MEMORY_LONG_TERM_TOP_TAGS = 8;
+    if (config.value.MEMORY_SEMANTIC_TOP_FACTS === undefined || config.value.MEMORY_SEMANTIC_TOP_FACTS === null || config.value.MEMORY_SEMANTIC_TOP_FACTS === "") config.value.MEMORY_SEMANTIC_TOP_FACTS = 8;
     if (typeof Intl.supportedValuesOf === "function") {
       try {
         const zones = Intl.supportedValuesOf("timeZone");
@@ -431,7 +463,15 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   async function loadModelStatus() {
-    modelStatus.value = await getModelStatus();
+    const res = await getModelStatus();
+    if (res && typeof res === "object" && res.model) {
+      modelStatus.value = res.model || modelStatus.value;
+      if (res.download && typeof res.download === "object") {
+        siglipDownload.value = { ...siglipDownload.value, ...res.download };
+      }
+      return;
+    }
+    modelStatus.value = res || modelStatus.value;
   }
 
   async function pollSiglipTask(taskId) {
@@ -482,6 +522,24 @@ export const useSettingsStore = defineStore("settings", () => {
       const res = await clearSiglip();
       notify(t("settings.model.siglip_cleared", { mb: res.freed_mb ?? 0 }), "success");
       await loadModelStatus();
+    } catch (e) {
+      notify(String(e?.response?.data?.detail || e), "warning");
+    }
+  }
+
+  async function clearRecommendTouchesAction() {
+    try {
+      const res = await clearRecommendTouches();
+      notify(t("settings.recommend.touch_cleared", { n: Number(res.deleted || 0) }), "success");
+    } catch (e) {
+      notify(String(e?.response?.data?.detail || e), "warning");
+    }
+  }
+
+  async function clearRecommendProfileAction() {
+    try {
+      const res = await clearRecommendProfile();
+      notify(t("settings.recommend.profile_cleared", { n: Number(res.deleted || 0) }), "success");
     } catch (e) {
       notify(String(e?.response?.data?.detail || e), "warning");
     }
@@ -600,6 +658,14 @@ export const useSettingsStore = defineStore("settings", () => {
     const v = Number(config.value.REC_STRICTNESS ?? 0.55);
     config.value.REC_STRICTNESS = Number((Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.55).toFixed(4));
   });
+  watch(() => config.value.REC_TOUCH_PENALTY_PCT, () => {
+    const v = Number(config.value.REC_TOUCH_PENALTY_PCT ?? 35);
+    config.value.REC_TOUCH_PENALTY_PCT = Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : 35;
+  });
+  watch(() => config.value.REC_IMPRESSION_PENALTY_PCT, () => {
+    const v = Number(config.value.REC_IMPRESSION_PENALTY_PCT ?? 3);
+    config.value.REC_IMPRESSION_PENALTY_PCT = Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : 3;
+  });
 
   watch(() => config.value.DATA_UI_DEVELOPER_MODE, (enabled) => {
     if (!enabled && settingsTab.value === "developer") settingsTab.value = "other";
@@ -668,6 +734,8 @@ export const useSettingsStore = defineStore("settings", () => {
     downloadSiglipAction,
     clearRuntimeDepsAction,
     clearSiglipAction,
+    clearRecommendTouchesAction,
+    clearRecommendProfileAction,
     loadSkillsData,
     onPluginUploadChange,
     loadDevSchemaData,

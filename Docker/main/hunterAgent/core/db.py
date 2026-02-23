@@ -3,18 +3,59 @@ import re
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+import threading
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from hunterAgent.core.config import Settings
 
 
 logger = logging.getLogger(__name__)
 
+_pool_lock = threading.Lock()
+_pools: dict[str, ConnectionPool] = {}
+
+
+class _PooledConnection:
+    def __init__(self, pool: ConnectionPool, conn: psycopg.Connection):
+        self._pool = pool
+        self._conn = conn
+        self._returned = False
+
+    def __getattr__(self, item: str):
+        return getattr(self._conn, item)
+
+    def close(self) -> None:
+        if self._returned:
+            return
+        self._returned = True
+        self._pool.putconn(self._conn)
+
+
+def _get_pool(settings: Settings) -> ConnectionPool:
+    dsn = str(settings.postgres_dsn or "").strip()
+    if not dsn:
+        raise RuntimeError("Missing POSTGRES_DSN")
+    with _pool_lock:
+        existing = _pools.get(dsn)
+        if existing is not None:
+            return existing
+        pool = ConnectionPool(
+            conninfo=dsn,
+            min_size=1,
+            max_size=8,
+            timeout=30,
+            open=True,
+        )
+        _pools[dsn] = pool
+        return pool
+
 
 def get_db_connection(settings: Settings):
-    return psycopg2.connect(settings.postgres_dsn)
+    pool = _get_pool(settings)
+    return _PooledConnection(pool, pool.getconn())
 
 
 @dataclass
@@ -74,7 +115,7 @@ def get_read_events_by_period(
     )
     conn = get_db_connection(settings)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(sql, (int(start_epoch), int(end_epoch), int(limit)))
             rows = cur.fetchall() or []
             return [dict(r) for r in rows]
@@ -91,7 +132,7 @@ def fetch_works_by_arcids(settings: Settings, arcids: Sequence[str]) -> List[Dic
     )
     conn = get_db_connection(settings)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(sql, (list(arcids),))
             rows = cur.fetchall() or []
             # Keep ordering stable: return in the same order as arcids.
@@ -121,7 +162,7 @@ def get_works_by_date_added(
     )
     conn = get_db_connection(settings)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(sql, (int(start_epoch), int(end_epoch), int(limit)))
             rows = cur.fetchall() or []
             return [dict(r) for r in rows]
@@ -157,7 +198,7 @@ def get_visual_embedding_by_arcid(settings: Settings, arcid: str) -> Optional[Di
     )
     conn = get_db_connection(settings)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(sql, (str(arcid),))
             row = cur.fetchone()
             if not row:
@@ -184,7 +225,7 @@ def get_visual_embedding_by_title(settings: Settings, title: str) -> Optional[Di
     )
     conn = get_db_connection(settings)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(sql, (t, f"%{t}%", t))
             row = cur.fetchone()
             if not row:
@@ -300,7 +341,7 @@ def get_profile_samples_from_reads(
     )
     conn = get_db_connection(settings)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(sql, (int(start_epoch), int(end_epoch), int(limit)))
             rows = cur.fetchall() or []
             out: List[Dict[str, Any]] = []
@@ -330,7 +371,7 @@ def get_profile_samples_from_inventory(
     )
     conn = get_db_connection(settings)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(sql, (int(start_epoch), int(end_epoch), int(limit)))
             rows = cur.fetchall() or []
             out: List[Dict[str, Any]] = []
@@ -360,7 +401,7 @@ def get_eh_candidates_by_period(
     )
     conn = get_db_connection(settings)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(sql, (int(start_epoch), int(end_epoch), int(limit)))
             rows = cur.fetchall() or []
             out: List[Dict[str, Any]] = []
@@ -426,7 +467,7 @@ def search_eh_by_cover_vector(
     if tags:
         where += " AND tags && %s"
         params.append(list(tags))
-    sql = f"SELECT gid::text, token FROM eh_works WHERE {where} ORDER BY cover_embedding <-> (%s)::vector LIMIT %s"
+    sql = f"SELECT gid::text, token FROM eh_works WHERE {where} ORDER BY cover_embedding <=> (%s)::vector LIMIT %s"
     params.extend([v, int(limit)])
 
     conn = get_db_connection(settings)
@@ -466,7 +507,7 @@ def fetch_eh_works_by_ids(settings: Settings, ids: Sequence[str]) -> List[Dict[s
 
     conn = get_db_connection(settings)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(sql, (gid_list, token_list))
             rows = cur.fetchall() or []
             by_id = {f"eh:{str(r['gid'])}:{str(r['token'])}": dict(r) for r in rows}

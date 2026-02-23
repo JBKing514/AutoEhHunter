@@ -56,6 +56,26 @@ class HomeHybridSearchRequest(BaseModel):
     include_tags: list[str] = []
 
 
+class RecommendTouchRequest(BaseModel):
+    gid: int | None = None
+    token: str = ""
+    eh_url: str = ""
+    ex_url: str = ""
+    weight: float = 1.0
+
+
+class RecommendImpressionItem(BaseModel):
+    gid: int | None = None
+    token: str = ""
+    eh_url: str = ""
+    ex_url: str = ""
+
+
+class RecommendImpressionBatchRequest(BaseModel):
+    items: list[RecommendImpressionItem] = []
+    weight: float = 1.0
+
+
 class ChatMessageRequest(BaseModel):
     session_id: str = "default"
     text: str = ""

@@ -4,6 +4,7 @@ import { clearEhCheckpoint, getHealth, getSchedule, getTasks, runTask, updateSch
 
 export const useControlStore = defineStore("control", () => {
   const health = ref({ database: {}, services: {} });
+  const healthLoading = ref(false);
   const schedule = ref({});
   const tasks = ref([]);
 
@@ -63,7 +64,28 @@ export const useControlStore = defineStore("control", () => {
   }
 
   async function loadDashboard() {
-    health.value = await getHealth();
+    healthLoading.value = true;
+    try {
+      health.value = await getHealth();
+    } catch (e) {
+      const reason = String(e?.response?.data?.detail || e?.message || e || "unreachable");
+      health.value = {
+        ...(health.value || {}),
+        services: {
+          ...(health.value?.services || {}),
+          lrr: {
+            ok: false,
+            message: reason,
+          },
+          llm: {
+            ok: false,
+            message: reason,
+          },
+        },
+      };
+    } finally {
+      healthLoading.value = false;
+    }
   }
 
   async function loadScheduleData() {
@@ -134,6 +156,7 @@ export const useControlStore = defineStore("control", () => {
 
   return {
     health,
+    healthLoading,
     schedule,
     tasks,
     init,

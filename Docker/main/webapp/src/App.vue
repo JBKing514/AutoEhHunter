@@ -183,6 +183,7 @@ appStore.init({
   },
   afterLogout: () => {
     appInitialized = false;
+    controlStore.stopControlPolling();
   },
 });
 
@@ -194,6 +195,7 @@ async function initializeAppData() {
   ensureChatSession();
   await Promise.all([
     settingsStore.loadConfigData(),
+    controlStore.loadDashboard(),
     resetHomeFeed(),
     settingsStore.loadThumbCacheStats(),
     settingsStore.loadTranslationStatus(),

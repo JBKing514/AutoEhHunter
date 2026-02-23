@@ -1,12 +1,24 @@
 import { computed, nextTick, ref } from "vue";
 import { defineStore } from "pinia";
-import { deleteChatMessage, editChatMessage, getChatHistory, sendChatMessageUpload, streamChatMessage } from "../api";
+import { deleteChatMessage, deleteChatSession, editChatMessage, getChatHistory, listChatSessions, sendChatMessageUpload, streamChatMessage } from "../api";
 import { useDashboardStore } from "./dashboardStore";
 
+function _genSessionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Fallback: RFC4122 v4-like UUID
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 export const useChatStore = defineStore("chat", () => {
+  const _initId = _genSessionId();
   const chatFabOpen = ref(false);
-  const chatSessions = ref([{ id: "default", title: "New Chat", messages: [] }]);
-  const chatSessionId = ref("default");
+  const chatSessions = ref([{ id: _initId, title: "New Chat", messages: [] }]);
+  const chatSessionId = ref(_initId);
   const chatInput = ref("");
   const chatIntent = ref("auto");
   const chatSending = ref(false);
@@ -17,6 +29,7 @@ export const useChatStore = defineStore("chat", () => {
   const chatLogRef = ref(null);
   const chatImageFile = ref(null);
   const chatImageInputRef = ref(null);
+  const chatImageDropActive = ref(false);
   const chatExploreOpen = ref(false);
   const chatExplorePayload = ref(null);
   const chatSidebarCollapsed = ref(false);
@@ -93,8 +106,9 @@ export const useChatStore = defineStore("chat", () => {
 
   function ensureChatSession() {
     if (!chatSessions.value.length) {
-      chatSessions.value = [{ id: "default", title: "New Chat", messages: [] }];
-      chatSessionId.value = "default";
+      const id = _genSessionId();
+      chatSessions.value = [{ id, title: "New Chat", messages: [] }];
+      chatSessionId.value = id;
     }
     if (!chatSessions.value.find((s) => s.id === chatSessionId.value)) {
       chatSessionId.value = chatSessions.value[0].id;
@@ -102,9 +116,35 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   function createChatSession() {
-    const id = `s-${Date.now()}`;
+    const id = _genSessionId();
     chatSessions.value.unshift({ id, title: "New Chat", messages: [] });
     chatSessionId.value = id;
+  }
+
+  async function loadChatSessions() {
+    try {
+      const res = await listChatSessions();
+      const list = (res.sessions || []);
+      if (!list.length) {
+        ensureChatSession();
+        return;
+      }
+      // Rebuild sessions from DB, keeping in-memory messages for current session
+      const currentId = chatSessionId.value;
+      const currentSess = chatSessions.value.find((s) => s.id === currentId);
+      chatSessions.value = list.map((s) => {
+        const existing = (chatSessions.value || []).find((x) => x.id === s.session_id);
+        return { id: s.session_id, title: s.title || "New Chat", messages: existing ? existing.messages : [] };
+      });
+      // Preserve current session if present, else select first
+      if (chatSessions.value.find((s) => s.id === currentId)) {
+        chatSessionId.value = currentId;
+      } else if (chatSessions.value.length) {
+        chatSessionId.value = chatSessions.value[0].id;
+      }
+    } catch {
+      ensureChatSession();
+    }
   }
 
   async function loadChatHistory() {
@@ -166,7 +206,11 @@ export const useChatStore = defineStore("chat", () => {
       const sess = activeChatSession.value;
       if (sess) {
         sess.messages = (res && res.history) ? res.history : (sess.messages || []);
-        if (text && sess.title === "New Chat") sess.title = text.slice(0, 24);
+        if (text && sess.title === "New Chat") {
+          sess.title = text.slice(0, 40);
+          // Refresh session list from DB so the new session shows up
+          loadChatSessions().catch(() => null);
+        }
         nextTick(() => scrollChatToBottom(true));
       }
       chatInput.value = "";
@@ -262,6 +306,24 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
+  async function removeChatSession(sessionId) {
+    const sid = String(sessionId || "");
+    if (!sid) return;
+    try {
+      await deleteChatSession(sid);
+    } catch {
+      // best-effort: still remove locally
+    }
+    chatSessions.value = chatSessions.value.filter((s) => s.id !== sid);
+    if (chatSessionId.value === sid) {
+      if (chatSessions.value.length) {
+        chatSessionId.value = chatSessions.value[0].id;
+      } else {
+        createChatSession();
+      }
+    }
+  }
+
   async function copyChatMessage(text) {
     try {
       await navigator.clipboard.writeText(String(text || ""));
@@ -277,6 +339,17 @@ export const useChatStore = defineStore("chat", () => {
 
   function onChatImagePicked(event) {
     const file = event?.target?.files?.[0] || null;
+    chatImageFile.value = file;
+  }
+
+  function onChatImageDrop(event) {
+    chatImageDropActive.value = false;
+    const file = event?.dataTransfer?.files?.[0] || null;
+    if (!file) return;
+    if (!String(file.type || "").startsWith("image/")) {
+      _notify(_t("home.image_upload.only_image"), "warning");
+      return;
+    }
     chatImageFile.value = file;
   }
 
@@ -350,6 +423,7 @@ export const useChatStore = defineStore("chat", () => {
     chatLogRef,
     chatImageFile,
     chatImageInputRef,
+    chatImageDropActive,
     chatExploreOpen,
     chatExplorePayload,
     chatSidebarCollapsed,
@@ -361,6 +435,7 @@ export const useChatStore = defineStore("chat", () => {
     scrollChatToBottom,
     ensureChatSession,
     createChatSession,
+    loadChatSessions,
     loadChatHistory,
     sendChat,
     _escapeHtml,
@@ -370,9 +445,11 @@ export const useChatStore = defineStore("chat", () => {
     saveChatEdit,
     regenerateFromMessage,
     removeChatMessage,
+    removeChatSession,
     copyChatMessage,
     triggerChatImagePick,
     onChatImagePicked,
+    onChatImageDrop,
     clearChatImage,
     openChatExplore,
     openChatPayloadResult,

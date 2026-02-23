@@ -11,13 +11,14 @@
             </v-alert>
           </v-card>
 
-  <v-tabs v-model="settingsTab" class="mb-4" color="primary">
+  <v-tabs class="mb-4" color="primary">
     <v-tab value="general" :to="{ name: 'settings-general' }">{{ t("settings.tab.general") }}</v-tab>
     <v-tab value="eh" :to="{ name: 'settings-eh' }">{{ t("settings.tab.eh") }}</v-tab>
     <v-tab value="data_clean" :to="{ name: 'settings-data-clean' }">{{ t("settings.tab.data_clean") }}</v-tab>
     <v-tab value="search" :to="{ name: 'settings-search' }">{{ t("settings.tab.search") }}</v-tab>
     <v-tab value="recommend" :to="{ name: 'settings-recommend' }">{{ t("settings.tab.recommend") }}</v-tab>
     <v-tab value="llm" :to="{ name: 'settings-llm' }">{{ t("settings.tab.llm") }}</v-tab>
+    <v-tab value="plugins" :to="{ name: 'settings-plugins' }">{{ t("settings.tab.plugins") }}</v-tab>
     <v-tab value="other" :to="{ name: 'settings-other' }">{{ t("settings.tab.other") }}</v-tab>
     <v-tab v-if="config.DATA_UI_DEVELOPER_MODE" value="developer" :to="{ name: 'settings-developer' }">{{ t("settings.tab.developer") }}</v-tab>
   </v-tabs>

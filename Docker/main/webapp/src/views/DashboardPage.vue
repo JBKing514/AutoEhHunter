@@ -13,12 +13,13 @@
                 @keyup.enter="runHomeSearchPlaceholder"
               />
               <v-btn color="primary" variant="tonal" prepend-icon="mdi-magnify" @click="runHomeSearchPlaceholder">{{ t('home.search.go') }}</v-btn>
+              <v-btn v-if="homeTab === 'recommend'" color="secondary" variant="tonal" prepend-icon="mdi-shuffle-variant" @click="shuffleRecommendBatch">{{ t('home.recommend.shuffle') }}</v-btn>
               <v-btn icon="mdi-filter-variant" variant="text" @click="homeFiltersOpen = true" />
             </div>
             <div class="d-flex align-center justify-space-between mt-3 flex-wrap ga-2">
               <v-tabs v-model="homeTab" density="comfortable" color="primary">
-                <v-tab value="history">{{ t('home.tab.history') }}</v-tab>
                 <v-tab value="recommend">{{ t('home.tab.recommend') }}</v-tab>
+                <v-tab value="history">{{ t('home.tab.history') }}</v-tab>
                 <v-tab value="search">{{ t('home.tab.search') }}</v-tab>
               </v-tabs>
               <v-btn-toggle v-model="homeViewMode" mandatory variant="outlined" class="home-view-toggle">
@@ -27,11 +28,13 @@
                 <v-btn value="list">{{ t('home.view.list') }}</v-btn>
               </v-btn-toggle>
             </div>
+            <div v-if="homeTab === 'recommend'" class="text-caption text-medium-emphasis mt-2">{{ t('home.recommend.longpress_dislike') }}</div>
           </v-card>
 
           <v-alert v-if="activeHomeState.error" type="warning" class="mb-3">{{ activeHomeState.error }}</v-alert>
 
           <v-card v-if="homeTab === 'search'" class="pa-3 mb-3" variant="flat">
+            <input ref="imageFileInputRef" type="file" accept="image/*" class="d-none" @change="onImagePickChange" />
             <div
               class="upload-dropzone"
               :class="{ active: imageDropActive }"
@@ -61,12 +64,12 @@
           <v-list v-if="homeViewMode === 'list'" class="mb-2" lines="two">
             <v-list-item v-for="item in filteredHomeItems" :key="item.id" :subtitle="itemSubtitle(item)">
               <template #title>
-                <a :href="itemPrimaryLink(item)" target="_blank" rel="noopener noreferrer" class="cover-link-title">{{ item.title || '-' }}</a>
+                <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="cover-link-title" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ item.title || '-' }}</a>
               </template>
               <template #prepend>
-                <div class="list-cover">
+                <div class="list-cover" @contextmenu.prevent>
                   <div v-if="item.thumb_url" class="cover-bg-blur list-blur" :style="{ backgroundImage: `url(${item.thumb_url})` }" />
-                  <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="cover-img list-cover-img" loading="lazy" />
+                  <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="cover-img list-cover-img" loading="lazy" draggable="false" @dragstart.prevent />
                   <v-icon v-else size="18">mdi-image-outline</v-icon>
                 </div>
               </template>
@@ -90,31 +93,38 @@
                     :class="{ compact: homeViewMode === 'compact' }"
                     variant="flat"
                     @touchstart.passive="onCardTouchStart(item)"
+                    @touchmove.passive="onCardTouchEnd"
                     @touchend.passive="onCardTouchEnd"
                     @touchcancel.passive="onCardTouchEnd"
+                    @contextmenu.prevent
                     @click="onCoverClick(item)"
                   >
                     <div class="cover-anchor">
-                      <div class="cover-ph">
+                      <div class="cover-ph" :class="{ disliked: isRecommendDisliked(item) }">
                         <div v-if="item.thumb_url" class="cover-bg-blur" :style="{ backgroundImage: `url(${item.thumb_url})` }" />
-                        <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="cover-img" loading="lazy" />
+                        <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="cover-img" loading="lazy" draggable="false" @dragstart.prevent />
                         <v-icon v-else size="30">mdi-image-outline</v-icon>
+                        <div class="cover-guard" @contextmenu.prevent />
+                        <div v-if="isRecommendDisliked(item)" class="dislike-mask"><v-icon size="40">mdi-thumb-down</v-icon></div>
                         <div v-if="categoryLabel(item)" class="cat-badge" :style="categoryBadgeStyle(item)">{{ categoryLabel(item) }}</div>
                       </div>
                       <div v-if="homeViewMode === 'compact'" class="cover-title-overlay">{{ item.title || '-' }}</div>
                     </div>
                     <div v-if="homeViewMode !== 'compact'" class="pa-2">
-                      <a :href="itemPrimaryLink(item)" target="_blank" rel="noopener noreferrer" class="text-body-2 font-weight-medium text-truncate cover-link-title d-block">{{ item.title || '-' }}</a>
+                      <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="text-body-2 font-weight-medium text-truncate cover-link-title d-block" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ item.title || '-' }}</a>
                       <div class="text-caption text-medium-emphasis text-truncate">{{ itemSubtitle(item) }}</div>
                     </div>
                   </v-card>
                 </template>
                 <v-card class="pa-2 hover-preview-card" variant="flat">
-                  <div class="hover-cover-wrap mb-2">
-                    <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="hover-cover" />
+                  <div class="hover-cover-wrap mb-2" @contextmenu.prevent>
+                    <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="hover-cover" draggable="false" @dragstart.prevent />
                     <div v-else class="hover-cover hover-fallback"><v-icon size="42">mdi-image-outline</v-icon></div>
+                    <div class="hover-dislike-banner">
+                      <v-btn size="small" color="warning" variant="flat" prepend-icon="mdi-thumb-down-outline" @click.stop="markRecommendDislike(item)">{{ t('home.recommend.dislike_action') }}</v-btn>
+                    </div>
                   </div>
-                  <a :href="itemPrimaryLink(item)" target="_blank" rel="noopener noreferrer" class="text-body-2 font-weight-medium mb-1 cover-link-title d-inline-block">{{ item.title || '-' }}</a>
+                  <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="text-body-2 font-weight-medium mb-1 cover-link-title d-inline-block" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ item.title || '-' }}</a>
                   <div v-if="categoryLabel(item)" class="text-caption text-medium-emphasis mb-1">{{ categoryLabel(item) }}</div>
                   <div class="d-flex flex-wrap ga-1">
                     <v-chip
@@ -141,11 +151,14 @@
               <div class="d-flex justify-space-between mb-1">
                 <v-btn size="x-small" icon="mdi-close-circle" color="error" variant="tonal" @click="mobilePreviewItem = null" />
               </div>
-              <div class="hover-cover-wrap mb-2">
-                <img v-if="mobilePreviewItem.thumb_url" :src="mobilePreviewItem.thumb_url" alt="cover" class="hover-cover" />
+              <div class="hover-cover-wrap mb-2" @contextmenu.prevent>
+                <img v-if="mobilePreviewItem.thumb_url" :src="mobilePreviewItem.thumb_url" alt="cover" class="hover-cover" draggable="false" @dragstart.prevent />
                 <div v-else class="hover-cover hover-fallback"><v-icon size="42">mdi-image-outline</v-icon></div>
+                <div class="hover-dislike-banner">
+                  <v-btn size="small" color="warning" variant="flat" prepend-icon="mdi-thumb-down-outline" @click="markRecommendDislike(mobilePreviewItem)">{{ t('home.recommend.dislike_action') }}</v-btn>
+                </div>
               </div>
-              <a :href="itemPrimaryLink(mobilePreviewItem)" class="text-body-2 font-weight-medium mb-1 cover-link-title d-inline-block" target="_blank" rel="noopener noreferrer" @click="onMobileDetailLinkClick">{{ mobilePreviewItem.title || '-' }}</a>
+              <a :href="itemPrimaryLink(mobilePreviewItem)" class="text-body-2 font-weight-medium mb-1 cover-link-title d-inline-block" target="_blank" rel="noopener noreferrer" @click="onMobileDetailLinkClick(); onRecommendItemOpen(mobilePreviewItem)">{{ mobilePreviewItem.title || '-' }}</a>
               <div v-if="categoryLabel(mobilePreviewItem)" class="text-caption text-medium-emphasis mb-1">{{ categoryLabel(mobilePreviewItem) }}</div>
               <div class="d-flex flex-wrap ga-1">
                 <v-chip v-for="tag in itemHoverTags(mobilePreviewItem)" :key="`m-${mobilePreviewItem.id}-${tag}`" size="x-small" variant="outlined" class="hover-tag" :class="{ active: isTagFilterActive(tag) }" @click="toggleTagFilter(tag)">{{ tag }}</v-chip>
@@ -260,8 +273,16 @@ export default {
       }
     });
   },
+  beforeUnmount() {
+    if (typeof this.resetRecommendExposureObserver === "function") {
+      this.resetRecommendExposureObserver();
+    }
+  },
   watch: {
-    homeTab() {
+    homeTab(next) {
+      if (next !== "recommend" && typeof this.resetRecommendExposureObserver === "function") {
+        this.resetRecommendExposureObserver();
+      }
       const state = this.activeHomeState || {};
       if (!Array.isArray(state.items) || !state.items.length) {
         if (typeof this.resetHomeFeed === "function") {

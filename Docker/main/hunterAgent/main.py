@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from hunterAgent.core.ai import OpenAICompatClient
 from hunterAgent.core.config import get_settings
+from hunterAgent.skills import load_all_skills
 from hunterAgent.skills.chat import run_chat
 from hunterAgent.skills.profile import run_profile
 from hunterAgent.skills.recommendation import run_recommendation
@@ -29,6 +30,13 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+_PLUGIN_DIR = os.getenv("HUNTER_PLUGIN_DIR", "/app/runtime/plugins")
+# Activate the skill registry: registers all builtin skills and loads any
+# user plugins from the plugin directory.  Must run before request handlers
+# are invoked so that list_tools() / run_skill() work correctly.
+load_all_skills(_PLUGIN_DIR)
 
 
 app = FastAPI(title="hunterAgent", version="0.1.0")

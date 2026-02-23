@@ -21,6 +21,14 @@ export const useLayoutStore = defineStore("layout", () => {
   const tab = ref("dashboard");
   const lang = ref(getInitialLang());
   const notices = ref([]);
+  const pageZoomOptions = [
+    { title: "90%", value: 90 },
+    { title: "100%", value: 100 },
+    { title: "110%", value: 110 },
+    { title: "120%", value: 120 },
+    { title: "130%", value: 130 },
+  ];
+  const pageZoom = ref(100);
 
   const langOptions = [
     { title: "简体中文", value: "zh" },
@@ -29,6 +37,22 @@ export const useLayoutStore = defineStore("layout", () => {
 
   let _navigate = null;
   let _logout = null;
+
+  function clampZoom(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 100;
+    return Math.max(90, Math.min(130, Math.round(n / 10) * 10));
+  }
+
+  function applyPageZoom() {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty("--aeh-page-zoom", String(pageZoom.value / 100));
+  }
+
+  if (typeof window !== "undefined") {
+    pageZoom.value = clampZoom(window.localStorage.getItem("autoeh_page_zoom") || 100);
+    applyPageZoom();
+  }
 
   const navItems = computed(() => {
     const base = [
@@ -91,6 +115,14 @@ export const useLayoutStore = defineStore("layout", () => {
     else settingsStore.config.DATA_UI_THEME_MODE = "system";
   }
 
+  function setPageZoom(next) {
+    pageZoom.value = clampZoom(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("autoeh_page_zoom", String(pageZoom.value));
+    }
+    applyPageZoom();
+  }
+
   function pushNotice(type, title, text) {
     const id = `${type}-${Date.now()}`;
     if ((notices.value || []).some((x) => x.type === type)) return;
@@ -116,6 +148,8 @@ export const useLayoutStore = defineStore("layout", () => {
     tab,
     lang,
     notices,
+    pageZoom,
+    pageZoomOptions,
     brandLogo,
     langOptions,
     navItems,
@@ -128,6 +162,7 @@ export const useLayoutStore = defineStore("layout", () => {
     routeToTab,
     goTab,
     cycleThemeMode,
+    setPageZoom,
     pushNotice,
     dismissNotice,
     clearAllNotices,

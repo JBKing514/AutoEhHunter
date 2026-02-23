@@ -115,7 +115,7 @@ CREATE INDEX IF NOT EXISTS idx_eh_works_posted ON eh_works (posted);
 CREATE INDEX IF NOT EXISTS idx_eh_works_last_fetched ON eh_works (last_fetched_at);
 CREATE INDEX IF NOT EXISTS idx_eh_works_tags_gin ON eh_works USING gin (tags);
 CREATE INDEX IF NOT EXISTS idx_eh_works_tags_translated_gin ON eh_works USING gin (tags_translated);
-CREATE INDEX IF NOT EXISTS idx_eh_works_cover_vec_l2 ON eh_works USING hnsw (cover_embedding vector_l2_ops);
+CREATE INDEX IF NOT EXISTS idx_eh_works_cover_vec ON eh_works USING hnsw (cover_embedding vector_cosine_ops);
 
 -- Incremental EH fetch queue (cross-service safe, no shared txt file needed).
 CREATE TABLE IF NOT EXISTS eh_queue (
@@ -160,5 +160,93 @@ ALTER TABLE app_config ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL 
 ALTER TABLE app_config ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS idx_app_config_updated_at ON app_config (updated_at);
+
+-- Short-term memory for Web UI chat session context.
+CREATE TABLE IF NOT EXISTS chat_history (
+    id           bigserial PRIMARY KEY,
+    session_id   text NOT NULL,
+    user_id      text NOT NULL DEFAULT 'default_user',
+    role         text NOT NULL,
+    content      text NOT NULL,
+    tool_calls   jsonb,
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS session_id text;
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS user_id text NOT NULL DEFAULT 'default_user';
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS role text;
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS content text;
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS tool_calls jsonb;
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history (session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_history_user_session_created ON chat_history (user_id, session_id, created_at);
+
+-- Long-term semantic memory for Agent retrieval (facts/preferences/blacklist).
+CREATE TABLE IF NOT EXISTS semantic_memory (
+    id           bigserial PRIMARY KEY,
+    user_id      text NOT NULL DEFAULT 'default_user',
+    fact         text NOT NULL,
+    embedding    vector(1024),
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE semantic_memory ADD COLUMN IF NOT EXISTS user_id text NOT NULL DEFAULT 'default_user';
+ALTER TABLE semantic_memory ADD COLUMN IF NOT EXISTS fact text;
+ALTER TABLE semantic_memory ADD COLUMN IF NOT EXISTS embedding vector(1024);
+ALTER TABLE semantic_memory ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_semantic_memory_user_created ON semantic_memory (user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_semantic_memory_vec ON semantic_memory USING hnsw (embedding vector_cosine_ops);
+
+-- User interactions for recommendation feedback (click/read/dislike).
+CREATE TABLE IF NOT EXISTS user_interactions (
+    id           bigserial PRIMARY KEY,
+    user_id      text NOT NULL DEFAULT 'default_user',
+    session_id   text,
+    arcid        text NOT NULL,
+    action_type  text NOT NULL,
+    weight       double precision NOT NULL DEFAULT 1.0,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT user_interactions_action_type_chk CHECK (action_type IN ('click', 'read', 'dislike', 'impression'))
+);
+
+ALTER TABLE user_interactions ADD COLUMN IF NOT EXISTS user_id text NOT NULL DEFAULT 'default_user';
+ALTER TABLE user_interactions ADD COLUMN IF NOT EXISTS session_id text;
+ALTER TABLE user_interactions ADD COLUMN IF NOT EXISTS arcid text;
+ALTER TABLE user_interactions ADD COLUMN IF NOT EXISTS action_type text;
+ALTER TABLE user_interactions ADD COLUMN IF NOT EXISTS weight double precision NOT NULL DEFAULT 1.0;
+ALTER TABLE user_interactions ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'user_interactions_action_type_chk'
+    ) THEN
+        ALTER TABLE user_interactions
+        ADD CONSTRAINT user_interactions_action_type_chk
+        CHECK (action_type IN ('click', 'read', 'dislike', 'impression'));
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_user_interactions_user_arcid ON user_interactions (user_id, arcid);
+CREATE INDEX IF NOT EXISTS idx_user_interactions_user_action_created ON user_interactions (user_id, action_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_user_interactions_session_created ON user_interactions (session_id, created_at);
+
+-- Cached user vector profile for fast Rocchio-style recommend retrieval.
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id      text PRIMARY KEY,
+    session_id   text,
+    base_vector  vector(1024),
+    updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS session_id text;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS base_vector vector(1024);
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_user_profiles_updated_at ON user_profiles (updated_at);
 
 COMMIT;
