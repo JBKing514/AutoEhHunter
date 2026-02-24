@@ -100,10 +100,10 @@ const handleLanguageChange = async (newLang) => {
   }
 };
 const handleCycleTheme = async () => {
-  emit("cycle-theme");
   const current = settings.config.DATA_UI_THEME_MODE || "system";
   const next = current === "system" ? "light" : current === "light" ? "dark" : "system";
   settings.config.DATA_UI_THEME_MODE = next;
+  emit("cycle-theme"); 
   try {
     await settings.saveConfig();
   } catch (e) {

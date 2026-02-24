@@ -90,7 +90,7 @@ def _get_user_base_vector(settings: Settings, user_id: str) -> List[float]:
         pass
     return []
 
-def _kmeans(points: List[List[float]], k: int, iters: int = 8) -> List[List[float]]:
+def _kmeans(points: List[List[float]], k: int) -> List[List[float]]:
     if not points:
         return []
     dim = len(points[0]) if points else 0
@@ -102,14 +102,14 @@ def _kmeans(points: List[List[float]], k: int, iters: int = 8) -> List[List[floa
         model = MiniBatchKMeans(
             n_clusters=k,
             n_init=3,
-            max_iter=max(300, iters),
+            max_iter=300,
             random_state=42,
         )
     else:
         model = KMeans(
             n_clusters=k,
             n_init=3,
-            max_iter=max(300, iters),
+            max_iter=300,
             random_state=42,
             algorithm="lloyd",
         )
