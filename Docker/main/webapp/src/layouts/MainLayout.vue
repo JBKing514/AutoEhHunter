@@ -1,6 +1,7 @@
 <template>
   <div v-if="ui.t">
     <app-sidebar
+      v-if="!appStore.isRecoveryMode"
       :model-value="ui.drawer"
       :rail="ui.rail"
       :brand-logo="ui.brandLogo"

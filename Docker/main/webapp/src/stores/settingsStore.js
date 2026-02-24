@@ -180,6 +180,7 @@ export const useSettingsStore = defineStore("settings", () => {
       REC_IMPRESSION_PENALTY_PCT: "settings.rec.impression_penalty_pct",
       REC_DYNAMIC_EXPAND_ENABLED: "settings.rec.dynamic_expand_enabled",
       REC_SHOW_JPN_TITLE: "settings.rec.show_jpn_title",
+      REC_USE_TRANSLATED_TAGS: "settings.rec.use_translated_tags",
       SEARCH_TEXT_WEIGHT: "settings.search.text_weight",
       SEARCH_VISUAL_WEIGHT: "settings.search.visual_weight",
       SEARCH_MIXED_TEXT_WEIGHT: "settings.search.mixed_text_weight",
@@ -399,6 +400,9 @@ export const useSettingsStore = defineStore("settings", () => {
     }
     if (config.value.REC_DYNAMIC_EXPAND_ENABLED === undefined) {
       config.value.REC_DYNAMIC_EXPAND_ENABLED = true;
+    }
+    if (config.value.REC_USE_TRANSLATED_TAGS === undefined) {
+      config.value.REC_USE_TRANSLATED_TAGS = false;
     }
     // Memory defaults
     if (config.value.MEMORY_SHORT_TERM_ENABLED === undefined) config.value.MEMORY_SHORT_TERM_ENABLED = true;

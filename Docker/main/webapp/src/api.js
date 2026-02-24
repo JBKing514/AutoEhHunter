@@ -75,8 +75,13 @@ export async function updateProfile(username) {
   return data;
 }
 
-export async function changePassword(oldPassword, newPassword) {
-  const { data } = await api.put("/auth/password", { old_password: oldPassword, new_password: newPassword });
+export async function changePassword(oldPassword, newPassword, username = "") {
+  const { data } = await api.put("/auth/password", { old_password: oldPassword, new_password: newPassword, username });
+  return data;
+}
+
+export async function verifyPassword(username, password) {
+  const { data } = await api.post("/auth/verify-password", { username, password });
   return data;
 }
 

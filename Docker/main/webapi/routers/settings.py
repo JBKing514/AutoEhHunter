@@ -113,11 +113,22 @@ def setup_validate_lrr(req: SetupValidateLrrRequest) -> dict[str, Any]:
 
 @router.post("/api/setup/complete")
 def setup_complete() -> dict[str, Any]:
+    from ..services.auth_service import generate_recovery_codes, hash_recovery_codes
+    from ..services.config_service import _save_json_config, resolve_config
+
     dsn = db_dsn()
     if not dsn:
         raise HTTPException(status_code=503, detail="database is not configured")
     set_initialized(dsn, True)
-    return {"ok": True}
+
+    codes = generate_recovery_codes(10)
+    hashed = hash_recovery_codes(codes)
+    cfg, _ = resolve_config()
+    to_save = dict(cfg)
+    to_save["DATA_UI_RECOVERY_CODES"] = ",".join(hashed)
+    _save_json_config(to_save)
+
+    return {"ok": True, "recovery_codes": codes}
 
 
 @router.get("/api/health")

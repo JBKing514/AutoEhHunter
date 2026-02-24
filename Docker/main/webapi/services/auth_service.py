@@ -19,6 +19,7 @@ from psycopg.rows import dict_row
 _RATE_LOCK = threading.Lock()
 _RATE_MAP: dict[str, list[float]] = {}
 _RATE_BLOCK_UNTIL: dict[str, float] = {}
+_RECOVERY_LOCK = threading.Lock()
 
 
 def _utcnow() -> datetime:
@@ -202,36 +203,6 @@ def create_session(dsn: str, uid: str, ttl_hours: int, ip: str = "", user_agent:
     return token, {"sid": sid, "expires_at": expires_at.isoformat(), "csrf_token": csrf}
 
 
-def get_session_user(dsn: str, token: str) -> dict[str, Any] | None:
-    h = _token_hash(token)
-    now = _utcnow()
-    with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT s.sid::text AS sid, s.uid::text AS uid, s.expires_at, s.revoked, u.username, u.role, u.disabled "
-                "FROM ui_sessions s JOIN ui_users u ON u.uid=s.uid "
-                "WHERE s.token_hash=%s LIMIT 1",
-                (h,),
-            )
-            row = cur.fetchone() or {}
-            if not row:
-                return None
-            if bool(row.get("revoked")) or bool(row.get("disabled")):
-                return None
-            exp = row.get("expires_at")
-            if not isinstance(exp, datetime) or exp <= now:
-                return None
-            cur.execute("UPDATE ui_sessions SET last_seen_at=now() WHERE sid=%s::uuid", (str(row.get("sid") or ""),))
-        conn.commit()
-    return {
-        "sid": str(row.get("sid") or ""),
-        "uid": str(row.get("uid") or ""),
-        "username": str(row.get("username") or ""),
-        "role": str(row.get("role") or "user"),
-        "expires_at": exp.isoformat() if isinstance(exp, datetime) else "",
-    }
-
-
 def revoke_session(dsn: str, token: str) -> None:
     h = _token_hash(token)
     with psycopg.connect(dsn) as conn:
@@ -290,6 +261,23 @@ def change_password(dsn: str, uid: str, old_password: str, new_password: str, pe
         conn.commit()
 
 
+def force_change_password_by_username(dsn: str, username: str, new_password: str, pepper: str = "") -> None:
+    user = str(username or "").strip()
+    if len(user) < 1:
+        raise ValueError("username is required")
+    new_hash = _hash_password(new_password, pepper=pepper)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT uid::text AS uid FROM ui_users WHERE username=%s LIMIT 1", (user,))
+            row = cur.fetchone() or {}
+            uid = str(row.get("uid") or "")
+            if not uid:
+                raise ValueError("user not found")
+            cur.execute("UPDATE ui_users SET password_hash=%s WHERE uid=%s::uuid", (new_hash, uid))
+            cur.execute("UPDATE ui_sessions SET revoked=true WHERE uid=%s::uuid", (uid,))
+        conn.commit()
+
+
 def delete_account(dsn: str, uid: str, password: str, pepper: str = "") -> None:
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
@@ -343,3 +331,135 @@ def clear_login_failures(ip: str, username: str) -> None:
 
 def auth_pepper() -> str:
     return str(os.getenv("DATA_UI_AUTH_PEPPER", "")).strip()
+
+
+def _recovery_signing_key(pepper: str = "") -> bytes | None:
+    p = str(pepper or "").strip()
+    if not p:
+        return None
+    return p.encode("utf-8")
+
+
+def _generate_recovery_token(pepper: str = "", expires_in_seconds: int = 900) -> str:
+    """生成一个有效期只有 15 分钟的无状态签名 Token"""
+    key = _recovery_signing_key(pepper)
+    if key is None:
+        raise ValueError("DATA_UI_AUTH_PEPPER is required for recovery token")
+    expires = int(time.time()) + expires_in_seconds
+    msg = f"recovery|{expires}".encode("utf-8")
+    signature = hmac.new(key, msg, digestmod="sha256").hexdigest()
+    return f"RECV::{expires}::{signature}"
+
+
+def _verify_recovery_token(token: str, pepper: str = "") -> bool:
+    """验证应急 Token"""
+    try:
+        key = _recovery_signing_key(pepper)
+        if key is None:
+            return False
+        parts = token.split("::")
+        if len(parts) != 3 or parts[0] != "RECV":
+            return False
+        expires = int(parts[1])
+        if int(time.time()) > expires:
+            return False
+        msg = f"recovery|{expires}".encode("utf-8")
+        expected_sig = hmac.new(key, msg, digestmod="sha256").hexdigest()
+        return hmac.compare_digest(parts[2], expected_sig)
+    except Exception:
+        return False
+
+
+def issue_recovery_csrf(token: str, pepper: str = "") -> str:
+    key = _recovery_signing_key(pepper)
+    if key is None:
+        raise ValueError("DATA_UI_AUTH_PEPPER is required for recovery csrf")
+    payload = f"recovery-csrf|{str(token or '').strip()}".encode("utf-8")
+    return hmac.new(key, payload, digestmod="sha256").hexdigest()
+
+
+def verify_recovery_csrf(token: str, csrf_token: str, pepper: str = "") -> bool:
+    try:
+        expected = issue_recovery_csrf(token, pepper=pepper)
+    except Exception:
+        return False
+    return hmac.compare_digest(expected, str(csrf_token or ""))
+
+
+def get_session_user(dsn: str, token: str) -> dict[str, Any] | None:
+    # 1. 拦截并验证应急 Token
+    if token.startswith("RECV::"):
+        if _verify_recovery_token(token, auth_pepper()):
+            return {
+                "sid": "recovery_session",
+                "uid": "recovery_uid",
+                "username": "emergency_admin",
+                "role": "recovery",
+                "expires_at": "",
+            }
+        return None
+    # 2. 正常的数据库验证逻辑
+    h = _token_hash(token)
+    now = _utcnow()
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT s.sid::text AS sid, s.uid::text AS uid, s.expires_at, s.revoked, u.username, u.role, u.disabled "
+                "FROM ui_sessions s JOIN ui_users u ON u.uid=s.uid "
+                "WHERE s.token_hash=%s LIMIT 1",
+                (h,),
+            )
+            row = cur.fetchone() or {}
+            if not row:
+                return None
+            if bool(row.get("revoked")) or bool(row.get("disabled")):
+                return None
+            exp = row.get("expires_at")
+            if not isinstance(exp, datetime) or exp <= now:
+                return None
+            cur.execute("UPDATE ui_sessions SET last_seen_at=now() WHERE sid=%s::uuid", (str(row.get("sid") or ""),))
+        conn.commit()
+    return {
+        "sid": str(row.get("sid") or ""),
+        "uid": str(row.get("uid") or ""),
+        "username": str(row.get("username") or ""),
+        "role": str(row.get("role") or "user"),
+        "expires_at": exp.isoformat() if isinstance(exp, datetime) else "",
+    }
+
+
+def generate_recovery_codes(count: int = 10) -> list[str]:
+    """生成指定数量的随机恢复码"""
+    codes = []
+    for _ in range(count):
+        raw = secrets.token_hex(16)
+        codes.append(raw)
+    return codes
+
+
+def hash_recovery_codes(codes: list[str]) -> list[str]:
+    """将恢复码列表转换为 SHA256 哈希列表"""
+    return [hashlib.sha256(c.encode("utf-8")).hexdigest() for c in codes]
+
+
+def check_recovery_login(password_input: str) -> bool:
+    """验证恢复码（烧毁式使用）"""
+    from .config_service import _load_json_config, _save_json_config
+    with _RECOVERY_LOCK:
+        json_vals = _load_json_config()
+        stored_hashes_str = str(json_vals.get("DATA_UI_RECOVERY_CODES", "")).strip()
+        if not stored_hashes_str:
+            return False
+
+        stored_hashes = [h.strip() for h in stored_hashes_str.split(",") if h.strip()]
+        if not stored_hashes:
+            return False
+
+        input_hash = hashlib.sha256(password_input.encode("utf-8")).hexdigest()
+
+        if input_hash in stored_hashes:
+            stored_hashes.remove(input_hash)
+            json_vals["DATA_UI_RECOVERY_CODES"] = ",".join(stored_hashes)
+            _save_json_config(json_vals)
+            return True
+        return False

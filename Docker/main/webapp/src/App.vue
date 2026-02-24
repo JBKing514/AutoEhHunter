@@ -180,6 +180,9 @@ appStore.init({
   t,
   afterAuthOk: async () => {
     await initializeAppData();
+    if (appStore.isRecoveryMode) {
+      router.push("/settings/general");
+    }
   },
   afterLogout: () => {
     appInitialized = false;

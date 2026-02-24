@@ -12,7 +12,7 @@
             <v-col cols="12" md="2"><v-text-field v-model="setupForm.POSTGRES_PORT" :label="t('settings.pg.port')" type="number" /></v-col>
             <v-col cols="12" md="3"><v-text-field v-model="setupForm.POSTGRES_DB" :label="t('settings.pg.db')" /></v-col>
             <v-col cols="12" md="3"><v-text-field v-model="setupForm.POSTGRES_USER" :label="t('settings.pg.user')" /></v-col>
-            <v-col cols="12" md="6"><v-text-field v-model="setupForm.POSTGRES_PASSWORD" :label="t('settings.pg.password')" type="password" /></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="setupForm.POSTGRES_PASSWORD" :label="t('settings.pg.password')" type="password" autocomplete="new-password" /></v-col>
             <v-col cols="12" md="6"><v-select v-model="setupForm.POSTGRES_SSLMODE" :items="['disable','allow','prefer','require','verify-ca','verify-full']" :label="t('settings.pg.sslmode')" /></v-col>
           </v-row>
           <div class="d-flex ga-2 align-center">
@@ -25,7 +25,7 @@
           <div class="text-subtitle-1 mb-3">{{ t('setup.step.lrr') }}</div>
           <v-row>
             <v-col cols="12" md="8"><v-text-field v-model="setupForm.LRR_BASE" :label="t('settings.lrr.base')" /></v-col>
-            <v-col cols="12" md="4"><v-text-field v-model="setupForm.LRR_API_KEY" :label="t('settings.lrr.api_key')" type="password" /></v-col>
+            <v-col cols="12" md="4"><v-text-field v-model="setupForm.LRR_API_KEY" :label="t('settings.lrr.api_key')" type="password" autocomplete="new-password" /></v-col>
           </v-row>
           <div class="d-flex ga-2 align-center">
             <v-btn color="primary" variant="outlined" :loading="setupBusy" @click="validateSetupLrrStep">{{ t('setup.validate_lrr') }}</v-btn>
@@ -45,7 +45,7 @@
             <v-col cols="12" md="3"><v-text-field v-model="setupForm.EH_QUEUE_LIMIT" :label="t('settings.eh.queue_limit')" type="number" /></v-col>
             <v-col cols="12"><v-text-field v-model="setupForm.EH_FILTER_TAG" :label="t('settings.eh.filter_tag')" /></v-col>
             <v-col cols="12"><v-text-field v-model="setupForm.EH_FILTER_CATEGORY" :label="t('settings.eh.filter_category')" /></v-col>
-            <v-col cols="12"><v-text-field v-model="setupForm.EH_COOKIE" :label="t('settings.eh.cookie')" type="password" /></v-col>
+            <v-col cols="12"><v-text-field v-model="setupForm.EH_COOKIE" :label="t('settings.eh.cookie')" type="password" autocomplete="new-password" /></v-col>
           </v-row>
         </v-window-item>
 
@@ -59,7 +59,7 @@
           </div>
           <v-row>
             <v-col cols="12" md="6"><v-text-field v-model="setupForm.INGEST_API_BASE" :label="t('settings.provider.ingest_api_base')" /></v-col>
-            <v-col cols="12" md="6"><v-text-field v-model="setupForm.INGEST_API_KEY" :label="t('settings.provider.ingest_api_key')" type="password" /></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="setupForm.INGEST_API_KEY" :label="t('settings.provider.ingest_api_key')" type="password" autocomplete="new-password" /></v-col>
             <v-col cols="12" md="6"><v-combobox v-model="setupForm.INGEST_VL_MODEL" :items="setupIngestModelOptions" :label="t('settings.provider.ingest_vl_model')" clearable /></v-col>
             <v-col cols="12" md="6"><v-combobox v-model="setupForm.INGEST_EMB_MODEL" :items="setupIngestModelOptions" :label="t('settings.provider.ingest_emb_model')" clearable /></v-col>
             <v-col cols="12" md="6"><v-text-field v-model="setupForm.INGEST_VL_MODEL_CUSTOM" :label="t('settings.provider.ingest_vl_model_custom')" /></v-col>
@@ -72,7 +72,7 @@
           <v-alert type="warning" variant="tonal" class="mb-3">{{ t('setup.optional_llm') }}</v-alert>
           <v-row>
             <v-col cols="12" md="6"><v-text-field v-model="setupForm.LLM_API_BASE" :label="t('settings.provider.llm_api_base')" /></v-col>
-            <v-col cols="12" md="6"><v-text-field v-model="setupForm.LLM_API_KEY" :label="t('settings.provider.llm_api_key')" type="password" /></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="setupForm.LLM_API_KEY" :label="t('settings.provider.llm_api_key')" type="password" autocomplete="new-password" /></v-col>
             <v-col cols="12" md="6"><v-combobox v-model="setupForm.LLM_MODEL" :items="setupLlmModelOptions" :label="t('settings.provider.llm_model')" clearable /></v-col>
             <v-col cols="12" md="6"><v-combobox v-model="setupForm.EMB_MODEL" :items="setupLlmModelOptions" :label="t('settings.provider.emb_model')" clearable /></v-col>
             <v-col cols="12" md="6"><v-text-field v-model="setupForm.LLM_MODEL_CUSTOM" :label="t('settings.provider.llm_model_custom')" /></v-col>
@@ -84,12 +84,22 @@
           <div class="text-h6 font-weight-bold mb-2">{{ t('setup.done.title') }}</div>
           <div class="text-body-2 text-medium-emphasis">{{ t('setup.done.desc') }}</div>
         </v-window-item>
+
+        <v-window-item :value="6">
+          <div class="text-h6 font-weight-bold mb-2">{{ t('setup.recovery.title') }}</div>
+          <v-alert type="warning" variant="tonal" class="mb-3">{{ t('setup.recovery.warning') }}</v-alert>
+          <div class="recovery-codes-list mb-3">
+            <div v-for="(code, idx) in recoveryCodes" :key="idx" class="recovery-code-item">{{ code }}</div>
+          </div>
+          <v-btn color="primary" variant="outlined" @click="copyRecoveryCodes">{{ t('setup.recovery.copy') }}</v-btn>
+        </v-window-item>
       </v-window>
 
       <div class="d-flex justify-space-between">
         <v-btn variant="text" :disabled="step <= 0" @click="step = Math.max(0, step - 1)">{{ t('setup.prev') }}</v-btn>
         <v-btn v-if="step < 5" color="primary" :disabled="(step === 0 && !setupDbValid) || (step === 1 && !setupLrrValid)" :loading="setupBusy" @click="goSetupNext(step)">{{ t('setup.next') }}</v-btn>
-        <v-btn v-else color="success" :loading="setupBusy" @click="finishSetupWizard">{{ t('setup.finish') }}</v-btn>
+        <v-btn v-else-if="step === 5" color="success" :loading="setupBusy" @click="finishSetupWizard">{{ t('setup.finish') }}</v-btn>
+        <v-btn v-else color="primary" @click="closeRecoveryStep">{{ t('setup.recovery.acknowledge') }}</v-btn>
       </div>
     </v-card>
   </v-dialog>
@@ -101,7 +111,7 @@ import { completeSetup, getProviderModels, validateSetupDb, validateSetupLrr } f
 import { useAppStore } from "../stores/appStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
-defineProps({ t: { type: Function, required: true } });
+const { t } = defineProps({ t: { type: Function, required: true } });
 
 const app = useAppStore();
 const settings = useSettingsStore();
@@ -112,6 +122,7 @@ const setupDbValid = ref(false);
 const setupLrrValid = ref(false);
 const setupIngestModelOptions = ref([]);
 const setupLlmModelOptions = ref([]);
+const recoveryCodes = ref([]);
 const setupForm = reactive({
   POSTGRES_HOST: "localhost",
   POSTGRES_PORT: 5432,
@@ -307,13 +318,64 @@ async function finishSetupWizard() {
   try {
     applySetupFormToConfig();
     await settings.saveConfig();
-    await completeSetup();
-    app.closeSetupWizard();
-    settings.notify(t('setup.done.toast'), 'success');
+    const result = await completeSetup();
+    if (result.recovery_codes && result.recovery_codes.length > 0) {
+      recoveryCodes.value = result.recovery_codes;
+      step.value = 6;
+    } else {
+      app.closeSetupWizard();
+      settings.notify(t('setup.done.toast'), 'success');
+    }
   } catch (e) {
     settings.notify(String(e?.response?.data?.detail || e), 'warning');
   } finally {
     setupBusy.value = false;
   }
 }
+
+function closeRecoveryStep() {
+  recoveryCodes.value = [];
+  app.closeSetupWizard();
+  settings.notify(t('setup.done.toast'), 'success');
+}
+
+function copyRecoveryCodes() {
+  const text = recoveryCodes.value.join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    settings.notify(t('setup.recovery.copied'), 'success');
+  }).catch(() => {
+    settings.notify(t('setup.recovery.copy_failed'), 'warning');
+  });
+}
 </script>
+
+<style scoped>
+.recovery-codes-list {
+  background: rgba(var(--v-theme-surface), 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  padding: 12px;
+  border-radius: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.recovery-code-item {
+  font-family: monospace;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-surface));
+  background: rgba(var(--v-theme-surface-variant), 0.55);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.16);
+  border-radius: 8px;
+  padding: 10px 12px;
+  word-break: break-all;
+}
+
+@media (max-width: 700px) {
+  .recovery-codes-list {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

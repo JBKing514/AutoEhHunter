@@ -8,14 +8,33 @@
   </v-card>
 
   <v-card class="pa-4 mb-4">
-    <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('settings.section.db') }}</div>
+    <div class="d-flex align-center justify-space-between">
+      <div class="text-subtitle-1 font-weight-medium">{{ t('settings.unlock.title') }}</div>
+      <v-switch v-model="settingsUnlocked" :color="settingsUnlocked ? 'orange' : 'blue'" inset hide-details @update:model-value="onUnlockChange" />
+    </div>
+  </v-card>
+
+  <v-dialog v-model="unlockDialog" max-width="400">
+    <v-card class="pa-4">
+      <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('settings.unlock.dialog_title') }}</div>
+      <v-text-field v-model="unlockPassword" :label="t('settings.unlock.password')" type="password" autocomplete="new-password" variant="outlined" />
+      <div class="d-flex justify-end ga-2">
+        <v-btn variant="text" @click="cancelUnlock">{{ t('settings.unlock.cancel') }}</v-btn>
+        <v-btn color="primary" :loading="unlockLoading" @click="confirmUnlock">{{ t('settings.unlock.confirm') }}</v-btn>
+      </div>
+    </v-card>
+  </v-dialog>
+
+  <div class="danger-zone" :class="{ 'danger-zone-locked': !settingsUnlocked }">
+  <v-card class="pa-4 mb-4">
+    <div class="text-subtitle-1 font-weight-medium mb-3 text-warning">{{ t('settings.danger_zone.title') }}</div>
     <v-row>
-      <v-col cols="12" md="4"><v-text-field v-model="config.POSTGRES_HOST" :label="t('settings.pg.host')" variant="outlined" density="compact" color="primary" hide-details /></v-col>
-      <v-col cols="12" md="2"><v-text-field v-model="config.POSTGRES_PORT" :label="t('settings.pg.port')" type="number" variant="outlined" density="compact" color="primary" hide-details /></v-col>
-      <v-col cols="12" md="3"><v-text-field v-model="config.POSTGRES_DB" :label="t('settings.pg.db')" variant="outlined" density="compact" color="primary" hide-details /></v-col>
-      <v-col cols="12" md="3"><v-text-field v-model="config.POSTGRES_USER" :label="t('settings.pg.user')" variant="outlined" density="compact" color="primary" hide-details /></v-col>
-      <v-col cols="12" md="6"><v-text-field v-model="config.POSTGRES_PASSWORD" :label="t('settings.pg.password')" type="password" :placeholder="t('settings.secret.keep')" :hint="secretHint('POSTGRES_PASSWORD')" persistent-hint variant="outlined" density="compact" color="primary" /></v-col>
-      <v-col cols="12" md="6"><v-select v-model="config.POSTGRES_SSLMODE" :items="['disable','allow','prefer','require','verify-ca','verify-full']" :label="t('settings.pg.sslmode')" variant="outlined" density="compact" color="primary" hide-details /></v-col>
+      <v-col cols="12" md="4"><v-text-field v-model="config.POSTGRES_HOST" :label="t('settings.pg.host')" variant="outlined" density="compact" color="primary" hide-details :disabled="!settingsUnlocked" /></v-col>
+      <v-col cols="12" md="2"><v-text-field v-model="config.POSTGRES_PORT" :label="t('settings.pg.port')" type="number" variant="outlined" density="compact" color="primary" hide-details :disabled="!settingsUnlocked" /></v-col>
+      <v-col cols="12" md="3"><v-text-field v-model="config.POSTGRES_DB" :label="t('settings.pg.db')" variant="outlined" density="compact" color="primary" hide-details :disabled="!settingsUnlocked" /></v-col>
+      <v-col cols="12" md="3"><v-text-field v-model="config.POSTGRES_USER" :label="t('settings.pg.user')" variant="outlined" density="compact" color="primary" hide-details :disabled="!settingsUnlocked" /></v-col>
+      <v-col cols="12" md="6"><v-text-field v-model="config.POSTGRES_PASSWORD" :label="t('settings.pg.password')" type="password" autocomplete="new-password" :placeholder="t('settings.secret.keep')" :hint="secretHint('POSTGRES_PASSWORD')" persistent-hint variant="outlined" density="compact" color="primary" :disabled="!settingsUnlocked" /></v-col>
+      <v-col cols="12" md="6"><v-select v-model="config.POSTGRES_SSLMODE" :items="['disable','allow','prefer','require','verify-ca','verify-full']" :label="t('settings.pg.sslmode')" variant="outlined" density="compact" color="primary" hide-details :disabled="!settingsUnlocked" /></v-col>
     </v-row>
   </v-card>
 
@@ -30,9 +49,9 @@
   <v-card class="pa-4 mb-4">
     <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('settings.section.secrets') }}</div>
     <v-row>
-      <v-col cols="12" md="6"><v-text-field v-model="config.LRR_API_KEY" :label="t('settings.lrr.api_key')" type="password" :placeholder="t('settings.secret.keep')" :hint="secretHint('LRR_API_KEY')" persistent-hint variant="outlined" density="compact" color="primary" /></v-col>
-      <v-col cols="12" md="6"><v-text-field v-model="config.INGEST_API_KEY" :label="t('settings.provider.ingest_api_key')" type="password" :placeholder="t('settings.secret.keep')" :hint="secretHint('INGEST_API_KEY')" persistent-hint variant="outlined" density="compact" color="primary" /></v-col>
-      <v-col cols="12" md="6"><v-text-field v-model="config.LLM_API_KEY" :label="t('settings.provider.llm_api_key')" type="password" :placeholder="t('settings.secret.keep')" :hint="secretHint('LLM_API_KEY')" persistent-hint variant="outlined" density="compact" color="primary" /></v-col>
+      <v-col cols="12" md="6"><v-text-field v-model="config.LRR_API_KEY" :label="t('settings.lrr.api_key')" type="password" autocomplete="new-password" :placeholder="t('settings.secret.keep')" :hint="secretHint('LRR_API_KEY')" persistent-hint variant="outlined" density="compact" color="primary" /></v-col>
+      <v-col cols="12" md="6"><v-text-field v-model="config.INGEST_API_KEY" :label="t('settings.provider.ingest_api_key')" type="password" autocomplete="new-password" :placeholder="t('settings.secret.keep')" :hint="secretHint('INGEST_API_KEY')" persistent-hint variant="outlined" density="compact" color="primary" /></v-col>
+      <v-col cols="12" md="6"><v-text-field v-model="config.LLM_API_KEY" :label="t('settings.provider.llm_api_key')" type="password" autocomplete="new-password" :placeholder="t('settings.secret.keep')" :hint="secretHint('LLM_API_KEY')" persistent-hint variant="outlined" density="compact" color="primary" /></v-col>
     </v-row>
   </v-card>
 
@@ -40,16 +59,17 @@
     <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('settings.section.account') }}</div>
     <v-row>
       <v-col cols="12" md="6"><v-text-field v-model="accountForm.username" :label="t('auth.username')" variant="outlined" density="compact" color="primary" hide-details /></v-col>
-      <v-col cols="12" md="6" class="d-flex align-center"><v-btn color="primary" variant="outlined" @click="updateAccountUsername">{{ t('auth.profile.update_username') }}</v-btn></v-col>
-      <v-col cols="12" md="4"><v-text-field v-model="accountForm.oldPassword" :label="t('auth.profile.old_password')" type="password" variant="outlined" density="compact" color="primary" hide-details /></v-col>
-      <v-col cols="12" md="4"><v-text-field v-model="accountForm.newPassword" :label="t('auth.profile.new_password')" type="password" variant="outlined" density="compact" color="primary" hide-details /></v-col>
-      <v-col cols="12" md="4"><v-text-field v-model="accountForm.newPassword2" :label="t('auth.profile.new_password_confirm')" type="password" variant="outlined" density="compact" color="primary" hide-details /></v-col>
+      <v-col cols="12" md="6" class="d-flex align-center"><v-btn color="primary" variant="outlined" @click="updateAccountUsername" :disabled="isRecoveryMode">{{ t('auth.profile.update_username') }}</v-btn></v-col>
+      <v-col v-if="!isRecoveryMode" cols="12" md="4"><v-text-field v-model="accountForm.oldPassword" :label="t('auth.profile.old_password')" type="password" autocomplete="new-password" variant="outlined" density="compact" color="primary" hide-details /></v-col>
+      <v-col cols="12" md="4"><v-text-field v-model="accountForm.newPassword" :label="t('auth.profile.new_password')" type="password" autocomplete="new-password" variant="outlined" density="compact" color="primary" hide-details /></v-col>
+      <v-col cols="12" md="4"><v-text-field v-model="accountForm.newPassword2" :label="t('auth.profile.new_password_confirm')" type="password" autocomplete="new-password" variant="outlined" density="compact" color="primary" hide-details /></v-col>
       <v-col cols="12" md="6" class="d-flex align-center"><v-btn color="warning" variant="outlined" @click="updateAccountPassword">{{ t('auth.profile.change_password') }}</v-btn></v-col>
       <v-col cols="12" md="6" class="d-flex align-center justify-end">
-        <v-btn color="error" variant="tonal" @click="deleteAccountNow">{{ t('auth.profile.delete_account') }}</v-btn>
+        <v-btn color="error" variant="tonal" @click="deleteAccountNow" :disabled="isRecoveryMode">{{ t('auth.profile.delete_account') }}</v-btn>
       </v-col>
     </v-row>
   </v-card>
+  </div>
 
   <v-card class="pa-4 mb-4">
     <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('settings.section.appearance') }}</div>
@@ -94,11 +114,93 @@
 </template>
 
 <script>
+import { computed, ref, watch } from "vue";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { useAppStore } from "../../stores/appStore";
+import { verifyPassword } from "../../api";
 
 export default {
   setup() {
-    return useSettingsStore();
+    const settingsStore = useSettingsStore();
+    const appStore = useAppStore();
+    const isRecoveryMode = computed(() => appStore.isRecoveryMode);
+
+    const settingsUnlocked = ref(false);
+    const unlockDialog = ref(false);
+    const unlockPassword = ref("");
+    const unlockLoading = ref(false);
+    const unlockPending = ref(false);
+
+    settingsUnlocked.value = appStore.isRecoveryMode;
+
+    watch(() => appStore.isRecoveryMode, (isRecovery) => {
+      if (isRecovery) {
+        settingsUnlocked.value = true;
+      }
+    });
+
+    function onUnlockChange(val) {
+      if (!val) {
+        settingsUnlocked.value = false;
+        return;
+      }
+      if (!isRecoveryMode.value) {
+        settingsUnlocked.value = false;
+        unlockDialog.value = true;
+        unlockPending.value = true;
+      }
+    }
+
+    function cancelUnlock() {
+      unlockDialog.value = false;
+      unlockPassword.value = "";
+      if (unlockPending.value) {
+        settingsUnlocked.value = false;
+        unlockPending.value = false;
+      }
+    }
+
+    async function confirmUnlock() {
+      unlockLoading.value = true;
+      try {
+        await verifyPassword(appStore.authUser.username, unlockPassword.value);
+        settingsUnlocked.value = true;
+        unlockDialog.value = false;
+        unlockPassword.value = "";
+        unlockPending.value = false;
+      } catch (e) {
+        settingsStore.notify(String(e?.response?.data?.detail || e), "warning");
+      } finally {
+        unlockLoading.value = false;
+      }
+    }
+
+    return {
+      ...settingsStore,
+      isRecoveryMode,
+      settingsUnlocked,
+      unlockDialog,
+      unlockPassword,
+      unlockLoading,
+      onUnlockChange,
+      cancelUnlock,
+      confirmUnlock,
+    };
   },
 };
 </script>
+
+<style scoped>
+.danger-zone {
+  border: 2px solid #fbc02d;
+  border-radius: 12px;
+  padding: 8px;
+  margin-bottom: 16px;
+  background: rgba(251, 192, 45, 0.08);
+}
+
+.danger-zone-locked {
+  opacity: 0.6;
+  pointer-events: none;
+}
+</style>

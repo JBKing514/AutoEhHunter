@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 import {
   changePassword,
@@ -26,6 +26,8 @@ export const useAppStore = defineStore("app", () => {
   const authReady = ref(false);
   const authUser = ref({ uid: "", username: "", role: "" });
   const accountForm = ref({ username: "", oldPassword: "", newPassword: "", newPassword2: "" });
+
+  const isRecoveryMode = computed(() => String(authUser.value.role || "").toLowerCase() === "recovery");
 
   let _t = (k) => k;
   let _afterAuthOk = null;
@@ -96,6 +98,12 @@ export const useAppStore = defineStore("app", () => {
     try {
       const res = await login(payload?.username, payload?.password);
       setCsrfToken(res?.session?.csrf_token || "");
+      if (res.recovery_mode) {
+        authUser.value = res.user || {};
+        showAuthGate.value = false;
+        if (_afterAuthOk) await _afterAuthOk();
+        return;
+      }
       const me = await getMe();
       authUser.value = me.user || {};
       accountForm.value.username = String(authUser.value.username || "");
@@ -138,7 +146,12 @@ export const useAppStore = defineStore("app", () => {
       return;
     }
     try {
-      await changePassword(accountForm.value.oldPassword, accountForm.value.newPassword);
+      const isRecovery = String(authUser.value.role || "").toLowerCase() === "recovery";
+      await changePassword(
+        isRecovery ? "" : accountForm.value.oldPassword,
+        accountForm.value.newPassword,
+        accountForm.value.username,
+      );
       toast.success(_t("auth.profile.password_changed"));
       accountForm.value.oldPassword = "";
       accountForm.value.newPassword = "";
@@ -177,6 +190,7 @@ export const useAppStore = defineStore("app", () => {
     authError,
     authReady,
     authUser,
+    isRecoveryMode,
     accountForm,
     init,
     bootstrap,

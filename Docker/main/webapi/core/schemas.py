@@ -113,6 +113,7 @@ class AuthUpdateProfileRequest(BaseModel):
 
 
 class AuthChangePasswordRequest(BaseModel):
+    username: str = ""
     old_password: str = ""
     new_password: str = ""
 

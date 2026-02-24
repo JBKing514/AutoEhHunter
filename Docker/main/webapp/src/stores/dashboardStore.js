@@ -174,7 +174,10 @@ export const useDashboardStore = defineStore("dashboard", () => {
   }
 
   function itemHoverTags(item) {
-    const tags = Array.isArray(item?.tags_translated) && item.tags_translated.length ? item.tags_translated : (item?.tags || []);
+    const useTranslated = config.value.REC_USE_TRANSLATED_TAGS;
+    const tags = useTranslated && Array.isArray(item?.tags_translated) && item.tags_translated.length
+      ? item.tags_translated
+      : (item?.tags || []);
     return tags.map((x) => String(x || "").trim()).filter(Boolean);
   }
 

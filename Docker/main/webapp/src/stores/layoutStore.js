@@ -3,6 +3,7 @@ import { defineStore } from "pinia";
 import { getInitialLang, setLang, t as tr } from "../i18n";
 import brandLogo from "../ico/AutoEhHunterLogo_128.png";
 import { useSettingsStore } from "./settingsStore";
+import { useAppStore } from "./appStore";
 
 const TAB_ROUTE_MAP = {
   dashboard: "/dashboard",
@@ -15,6 +16,7 @@ const TAB_ROUTE_MAP = {
 
 export const useLayoutStore = defineStore("layout", () => {
   const settingsStore = useSettingsStore();
+  const appStore = useAppStore();
 
   const drawer = ref(true);
   const rail = ref(false);
@@ -55,6 +57,11 @@ export const useLayoutStore = defineStore("layout", () => {
   }
 
   const navItems = computed(() => {
+    if (appStore.isRecoveryMode) {
+      return [
+        { key: "settings", title: "tab.settings", icon: "mdi-cog-outline" },
+      ];
+    }
     const base = [
       { key: "dashboard", title: "tab.dashboard", icon: "mdi-view-dashboard-outline" },
       { key: "control", title: "tab.control", icon: "mdi-console" },
