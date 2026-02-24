@@ -90,47 +90,29 @@ def _get_user_base_vector(settings: Settings, user_id: str) -> List[float]:
         pass
     return []
 
-
-def _avg_vec(vs: Sequence[Sequence[float]]) -> List[float]:
-    if not vs:
-        return []
-    dim = len(vs[0])
-    acc = [0.0] * dim
-    for v in vs:
-        if len(v) != dim:
-            continue
-        for i in range(dim):
-            acc[i] += float(v[i])
-    m = float(len(vs))
-    if m <= 0:
-        return []
-    return [x / m for x in acc]
-
-
 def _kmeans(points: List[List[float]], k: int, iters: int = 8) -> List[List[float]]:
     if not points:
         return []
-    pts = [p for p in points if p]
+    dim = len(points[0]) if points else 0
+    pts = [p for p in points if p and len(p) == dim]
     if not pts:
         return []
     k = max(1, min(int(k), len(pts)))
-
     if len(pts) > 1000:
         model = MiniBatchKMeans(
             n_clusters=k,
             n_init=3,
-            max_iter=iters,
+            max_iter=max(300, iters),
             random_state=42,
         )
     else:
         model = KMeans(
             n_clusters=k,
             n_init=3,
-            max_iter=iters,
+            max_iter=max(300, iters),
             random_state=42,
             algorithm="lloyd",
         )
-
     model.fit(pts)
     return model.cluster_centers_.tolist()
 

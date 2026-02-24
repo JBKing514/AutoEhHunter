@@ -22,10 +22,10 @@
                 <v-tab value="history">{{ t('home.tab.history') }}</v-tab>
                 <v-tab value="search">{{ t('home.tab.search') }}</v-tab>
               </v-tabs>
-              <v-btn-toggle v-model="homeViewMode" mandatory variant="outlined" class="home-view-toggle">
-                <v-btn value="wide">{{ t('home.view.wide') }}</v-btn>
-                <v-btn value="compact">{{ t('home.view.compact') }}</v-btn>
-                <v-btn value="list">{{ t('home.view.list') }}</v-btn>
+              <v-btn-toggle v-model="homeViewMode" mandatory variant="outlined" class="home-view-toggle flex-shrink-0">
+                <v-btn value="wide" class="text-no-wrap">{{ t('home.view.wide') }}</v-btn>
+                <v-btn value="compact" class="text-no-wrap">{{ t('home.view.compact') }}</v-btn>
+                <v-btn value="list" class="text-no-wrap">{{ t('home.view.list') }}</v-btn>
               </v-btn-toggle>
             </div>
             <div v-if="homeTab === 'recommend'" class="text-caption text-medium-emphasis mt-2">{{ t('home.recommend.longpress_dislike') }}</div>
@@ -202,20 +202,30 @@
             <v-card class="pa-4" variant="flat">
               <div class="text-subtitle-1 font-weight-medium mb-2">{{ t('home.filter.title') }}</div>
               <div class="text-caption text-medium-emphasis mb-3">{{ t('home.filter.hint') }}</div>
-              <div class="text-body-2 mb-2">{{ t('home.filter.categories') }}</div>
-              <div class="d-flex ga-2 mb-2">
-                <v-btn size="small" variant="outlined" @click="selectAllHomeFilterCategories">{{ t('home.filter.select_all') }}</v-btn>
-                <v-btn size="small" variant="outlined" @click="clearAllHomeFilterCategories">{{ t('home.filter.select_none') }}</v-btn>
+              
+              <div class="d-flex align-center justify-space-between mb-2">
+                <div class="text-body-2">{{ t('home.filter.categories') }}</div>
+                <div class="d-flex ga-2">
+                  <v-btn size="small" variant="text" color="primary" @click="selectAllHomeFilterCategories">{{ t('home.filter.select_all') }}</v-btn>
+                  <v-btn size="small" variant="text" color="medium-emphasis" @click="clearAllHomeFilterCategories">{{ t('home.filter.select_none') }}</v-btn>
+                </div>
               </div>
-              <div class="d-flex flex-wrap ga-2 mb-3">
+
+              <div class="mb-4" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;">
                 <v-btn
                   v-for="cat in ehCategoryDefs"
                   :key="`f-${cat.key}`"
-                  class="category-btn"
+                  class="category-btn text-caption font-weight-bold"
+                  height="32" 
+                  rounded="lg" 
+                  variant="flat"
                   :style="homeFilterCategoryStyle(cat.key, cat.color)"
                   @click="toggleHomeFilterCategory(cat.key)"
-                >{{ cat.label }}</v-btn>
+                >
+                  <span class="text-truncate">{{ cat.label }}</span>
+                </v-btn>
               </div>
+
               <v-autocomplete
                 v-model="homeFilters.tags"
                 v-model:search="filterTagInput"
@@ -224,16 +234,24 @@
                 chips
                 closable-chips
                 clearable
+                variant="outlined"
+                density="compact"
+                color="primary"
                 :label="t('home.filter.tags')"
                 :hint="t('home.filter.tags_hint')"
                 persistent-hint
+                class="mb-2"
               />
+
               <div class="d-flex justify-space-between mt-2">
-                <v-btn size="small" :color="config.SEARCH_TAG_SMART_ENABLED ? 'primary' : undefined" :variant="config.SEARCH_TAG_SMART_ENABLED ? 'tonal' : 'outlined'" @click="config.SEARCH_TAG_SMART_ENABLED = !config.SEARCH_TAG_SMART_ENABLED">{{ t('home.filter.smart') }}</v-btn>
+                <v-btn size="small" :color="config.SEARCH_TAG_SMART_ENABLED ? 'primary' : undefined" :variant="config.SEARCH_TAG_SMART_ENABLED ? 'tonal' : 'outlined'" @click="config.SEARCH_TAG_SMART_ENABLED = !config.SEARCH_TAG_SMART_ENABLED">
+                  {{ t('home.filter.smart') }}
+                </v-btn>
               </div>
+
               <div class="d-flex justify-end ga-2 mt-3">
                 <v-btn variant="text" @click="clearHomeFilters">{{ t('home.filter.clear') }}</v-btn>
-                <v-btn color="primary" @click="applyHomeFilters">{{ t('home.filter.apply') }}</v-btn>
+                <v-btn color="primary" variant="flat" @click="applyHomeFilters">{{ t('home.filter.apply') }}</v-btn>
               </div>
             </v-card>
           </v-dialog>

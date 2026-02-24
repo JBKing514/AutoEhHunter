@@ -38,8 +38,8 @@
             </div>
             <v-row v-for="(item, key) in schedule" :key="key" class="align-center mb-2">
               <v-col cols="12" md="4">{{ schedulerLabel(key) }}</v-col>
-              <v-col cols="12" md="3"><v-switch v-model="item.enabled" color="primary" hide-details /></v-col>
-              <v-col cols="12" md="5"><v-text-field v-model="item.cron" :label="`Cron (${schedulerLabel(key)})`" hide-details /></v-col>
+              <v-col cols="12" md="3"><v-switch v-model="item.enabled" color="primary" hide-details inset/></v-col>
+              <v-col cols="12" md="5"><v-text-field v-model="item.cron" :label="`Cron (${schedulerLabel(key)})`" hide-details variant="outlined" density="comfortable" color="primary"/></v-col>
             </v-row>
             <v-btn color="primary" @click="saveSchedule">{{ t('control.scheduler.save') }}</v-btn>
           </v-card>

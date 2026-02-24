@@ -101,7 +101,7 @@
                 <div class="d-flex ga-2 align-center">
                   <v-btn icon="mdi-image-plus" variant="text" @click="triggerChatImagePick" />
                   <v-text-field v-model="chatInput" hide-details density="comfortable" :label="t('chat.input')" variant="outlined" @keyup.enter="sendChat('chat')" />
-                  <v-select v-model="chatIntent" :items="chatIntentOptions" item-title="title" item-value="value" density="comfortable" hide-details style="max-width: 180px" />
+                  <v-select v-model="chatIntent" :items="chatIntentOptions" variant="outlined" item-title="title" item-value="value" density="comfortable" hide-details style="max-width: 180px" />
                   <v-btn :loading="chatSending" color="primary" @click="sendChat('chat')">{{ t('chat.send') }}</v-btn>
                 </div>
                 <div v-if="chatImageFile" class="d-flex ga-2 align-center mt-2">

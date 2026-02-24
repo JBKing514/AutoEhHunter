@@ -4,12 +4,12 @@
               <v-card class="pa-4 mb-3">
                 <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('audit.filters') }}</div>
                 <v-row>
-                  <v-col cols="12" md="6"><v-select v-model="auditFilter.task" :items="taskOptions" :label="t('audit.filter.task')" clearable /></v-col>
-                  <v-col cols="12" md="6"><v-select v-model="auditFilter.status" :label="t('audit.filter.status')" :items="['', 'success', 'failed', 'timeout']" /></v-col>
-                  <v-col cols="12"><v-text-field v-model="auditFilter.keyword" :label="t('audit.filter.keyword')" /></v-col>
-                  <v-col cols="12" md="6"><v-text-field v-model="auditFilter.start_date" type="date" :label="t('audit.filter.start_date')" /></v-col>
-                  <v-col cols="12" md="6"><v-text-field v-model="auditFilter.end_date" type="date" :label="t('audit.filter.end_date')" /></v-col>
-                  <v-col cols="12" md="6"><v-text-field v-model.number="auditFilter.limit" type="number" min="5" max="500" label="Limit" /></v-col>
+                  <v-col cols="12" md="6"><v-select v-model="auditFilter.task" :items="taskOptions" :label="t('audit.filter.task')" clearable variant="outlined" density="compact" color="primary" hide-details/></v-col>
+                  <v-col cols="12" md="6"><v-select v-model="auditFilter.status" :label="t('audit.filter.status')" :items="['', 'success', 'failed', 'timeout']" variant="outlined" density="compact" color="primary" hide-details/></v-col>
+                  <v-col cols="12"><v-text-field v-model="auditFilter.keyword" :label="t('audit.filter.keyword')" variant="outlined" density="compact" color="primary"/></v-col>
+                  <v-col cols="12" md="6"><v-text-field v-model="auditFilter.start_date" type="date" :label="t('audit.filter.start_date')" variant="outlined" density="compact" color="primary"/></v-col>
+                  <v-col cols="12" md="6"><v-text-field v-model="auditFilter.end_date" type="date" :label="t('audit.filter.end_date')" variant="outlined" density="compact" color="primary"/></v-col>
+                  <v-col cols="12" md="6"><v-text-field v-model.number="auditFilter.limit" type="number" min="5" max="500" label="Limit" variant="outlined" density="compact" color="primary"/></v-col>
                   <v-col cols="12" md="6" class="d-flex align-center ga-2">
                     <v-btn color="primary" @click="applyAuditFilter">{{ t('audit.filter.apply') }}</v-btn>
                     <v-btn variant="text" @click="resetAuditFilter">{{ t('audit.filter.reset') }}</v-btn>
@@ -46,11 +46,11 @@
                   <div class="text-subtitle-1 font-weight-medium">{{ t('audit.logs') }}</div>
                   <div class="d-flex ga-2 align-center">
                     <v-btn size="small" color="warning" variant="outlined" @click="clearAuditLogsNow">{{ t('audit.log.clear') }}</v-btn>
-                    <v-switch v-model="logAutoStream" color="primary" hide-details :label="t('audit.log.live')" />
+                    <v-switch v-model="logAutoStream" color="primary" hide-details :label="t('audit.log.live')" inset />
                   </div>
                 </div>
                 <div class="text-caption text-medium-emphasis mb-2">{{ selectedLog || '-' }}</div>
-                <v-text-field v-model="logHighlight" class="mt-2" :label="t('audit.log.highlight')" />
+                <v-text-field v-model="logHighlight" class="mt-2" :label="t('audit.log.highlight')" variant="outlined" density="compact" color="primary"/>
                 <div class="log-view mono mt-2" v-html="highlightedLogHtml" />
               </v-card>
             </v-col>
