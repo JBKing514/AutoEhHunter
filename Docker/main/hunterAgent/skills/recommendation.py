@@ -4,6 +4,10 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
+import psycopg
+from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.metrics.pairwise import cosine_similarity
+
 from hunterAgent.core.ai import ChatMessage, OpenAICompatClient
 from hunterAgent.core.config import Settings
 from hunterAgent.core.db import (
@@ -48,6 +52,45 @@ def _l2(a: Sequence[float], b: Sequence[float]) -> float:
     return math.sqrt(s)
 
 
+def _cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
+    if not a or not b:
+        return 0.0
+    dot = 0.0
+    norm_a = 0.0
+    norm_b = 0.0
+    for i in range(min(len(a), len(b))):
+        av = float(a[i])
+        bv = float(b[i])
+        dot += av * bv
+        norm_a += av * av
+        norm_b += bv * bv
+    if norm_a <= 0 or norm_b <= 0:
+        return 0.0
+    return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
+
+
+def _get_user_base_vector(settings: Settings, user_id: str) -> List[float]:
+    dsn = str(settings.postgres_dsn or "").strip()
+    if not dsn:
+        return []
+    uid = str(user_id or "default_user")
+    try:
+        with psycopg.connect(dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT base_vector FROM user_profiles WHERE user_id = %s LIMIT 1",
+                    (uid,)
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    vec = row[0]
+                    if isinstance(vec, list):
+                        return [float(x) for x in vec]
+    except Exception:
+        pass
+    return []
+
+
 def _avg_vec(vs: Sequence[Sequence[float]]) -> List[float]:
     if not vs:
         return []
@@ -72,37 +115,24 @@ def _kmeans(points: List[List[float]], k: int, iters: int = 8) -> List[List[floa
         return []
     k = max(1, min(int(k), len(pts)))
 
-    # Deterministic init by quantile picks.
-    seeds: List[List[float]] = []
-    n = len(pts)
-    for i in range(k):
-        idx = int((i + 0.5) * n / k)
-        if idx >= n:
-            idx = n - 1
-        seeds.append(list(pts[idx]))
-    centroids = seeds
+    if len(pts) > 1000:
+        model = MiniBatchKMeans(
+            n_clusters=k,
+            n_init=3,
+            max_iter=iters,
+            random_state=42,
+        )
+    else:
+        model = KMeans(
+            n_clusters=k,
+            n_init=3,
+            max_iter=iters,
+            random_state=42,
+            algorithm="lloyd",
+        )
 
-    for _ in range(max(1, int(iters))):
-        buckets: List[List[List[float]]] = [[] for _ in range(k)]
-        for p in pts:
-            best_i = 0
-            best_d = float("inf")
-            for i, c in enumerate(centroids):
-                d = _l2(p, c)
-                if d < best_d:
-                    best_d = d
-                    best_i = i
-            buckets[best_i].append(p)
-
-        new_centroids: List[List[float]] = []
-        for i in range(k):
-            if buckets[i]:
-                new_centroids.append(_avg_vec(buckets[i]))
-            else:
-                new_centroids.append(centroids[i])
-        centroids = new_centroids
-
-    return centroids
+    model.fit(pts)
+    return model.cluster_centers_.tolist()
 
 
 def _build_tag_scores(samples: List[Dict[str, Any]]) -> Dict[str, float]:
@@ -249,23 +279,30 @@ def run_recommendation(*, settings: Settings, llm: OpenAICompatClient, payload: 
     now = int(time.time())
     k = max(1, min(50, int(payload.get("k") or 10)))
 
+    user_id = str(payload.get("user_id") or "default_user")
+
     profile_days = max(1, min(365, int(payload.get("profile_days") or settings.rec_profile_days)))
     candidate_hours = max(1, min(24 * 30, int(payload.get("candidate_hours") or settings.rec_candidate_hours)))
     candidate_limit = max(50, min(2000, int(payload.get("candidate_limit") or settings.rec_candidate_limit)))
 
     tag_weight = float(payload.get("tag_weight") or settings.rec_tag_weight)
-    visual_weight = float(payload.get("visual_weight") or settings.rec_visual_weight)
+    visual_weight = float(payload.get("tag_weight") or settings.rec_visual_weight)
+    feedback_weight = float(payload.get("feedback_weight") or getattr(settings, "rec_feedback_weight", 0.0))
     if tag_weight < 0:
         tag_weight = 0.0
     if visual_weight < 0:
         visual_weight = 0.0
-    wsum = tag_weight + visual_weight
+    if feedback_weight < 0:
+        feedback_weight = 0.0
+    wsum = tag_weight + visual_weight + feedback_weight
     if wsum <= 0:
         tag_weight = 0.55
         visual_weight = 0.45
+        feedback_weight = 0.0
         wsum = 1.0
     tag_weight /= wsum
     visual_weight /= wsum
+    feedback_weight /= wsum
 
     strictness = _clamp(float(payload.get("strictness") or settings.rec_strictness), 0.0, 1.0)
     mode = str(payload.get("mode") or "").strip().lower()
@@ -277,6 +314,8 @@ def run_recommendation(*, settings: Settings, llm: OpenAICompatClient, payload: 
         strictness = _clamp(strictness + 0.20, 0.0, 1.0)
 
     profile = _get_profile_cached(settings, profile_days)
+    base_vector = _get_user_base_vector(settings, user_id) if feedback_weight > 0 else []
+
     start = now - candidate_hours * 3600
     candidates = get_eh_candidates_by_period(settings, start, now, limit=candidate_limit)
 
@@ -298,12 +337,16 @@ def run_recommendation(*, settings: Settings, llm: OpenAICompatClient, payload: 
                 min_dist = min(dists)
                 vscore = 1.0 / (1.0 + float(min_dist))
 
+        fscore = 0.0
+        if base_vector and isinstance(vec, list) and vec and feedback_weight > 0:
+            fscore = _cosine_similarity(vec, base_vector)
+
         if (not explore) and tscore < min_tag and vscore < min_visual:
             continue
 
         novelty_bonus = (1.0 - tscore) * 0.12 if explore else 0.0
         precision_bonus = ((tscore + vscore) * 0.5) * (0.08 * strictness)
-        final = tag_weight * tscore + visual_weight * vscore + novelty_bonus + precision_bonus
+        final = tag_weight * tscore + visual_weight * vscore + feedback_weight * fscore + novelty_bonus + precision_bonus
 
         scored.append(
             {
@@ -320,6 +363,7 @@ def run_recommendation(*, settings: Settings, llm: OpenAICompatClient, payload: 
                 "signals": {
                     "tag_score": float(tscore),
                     "visual_score": float(vscore),
+                    "feedback_score": float(fscore),
                     "min_cluster_distance": min_dist,
                 },
             }

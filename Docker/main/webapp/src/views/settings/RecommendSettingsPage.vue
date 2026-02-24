@@ -17,6 +17,7 @@
               <v-col cols="12" md="4"><v-slider v-model="config.REC_STRICTNESS" min="0" max="1" step="0.01" :label="labelFor('REC_STRICTNESS')" thumb-label /></v-col>
               <v-col cols="12" md="4"><v-slider v-model="config.REC_TAG_WEIGHT" min="0" max="1" step="0.01" :label="labelFor('REC_TAG_WEIGHT')" thumb-label /></v-col>
               <v-col cols="12" md="4"><v-slider v-model="config.REC_VISUAL_WEIGHT" min="0" max="1" step="0.01" :label="labelFor('REC_VISUAL_WEIGHT')" thumb-label /></v-col>
+              <v-col cols="12" md="4"><v-slider v-model="config.REC_FEEDBACK_WEIGHT" min="0" max="1" step="0.01" :label="labelFor('REC_FEEDBACK_WEIGHT')" thumb-label /></v-col>
               <v-col cols="12" md="4"><v-text-field v-model="config.REC_TAG_FLOOR_SCORE" :label="labelFor('REC_TAG_FLOOR_SCORE')" type="number" step="0.01" /></v-col>
               <v-col cols="12" md="6">
                 <v-slider

@@ -146,6 +146,7 @@ class Settings:
     rec_cluster_cache_ttl_s: int
     rec_tag_weight: float
     rec_visual_weight: float
+    rec_feedback_weight: float
     rec_strictness: float
     rec_candidate_limit: int
     rec_tag_floor_score: float
@@ -206,6 +207,7 @@ def get_settings() -> Settings:
         rec_cluster_cache_ttl_s=_cfg_int("REC_CLUSTER_CACHE_TTL_S", 900),
         rec_tag_weight=_cfg_float("REC_TAG_WEIGHT", 0.55),
         rec_visual_weight=_cfg_float("REC_VISUAL_WEIGHT", 0.45),
+        rec_feedback_weight=_cfg_float("REC_FEEDBACK_WEIGHT", 0.0),
         rec_strictness=_cfg_float("REC_STRICTNESS", 0.55),
         rec_candidate_limit=_cfg_int("REC_CANDIDATE_LIMIT", 400),
         rec_tag_floor_score=_cfg_float("REC_TAG_FLOOR_SCORE", 0.08),

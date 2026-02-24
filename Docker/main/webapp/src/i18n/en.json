@@ -273,6 +273,7 @@
   "settings.rec.cache_ttl": "Recommendation Cache TTL (s)",
   "settings.rec.tag_weight": "Tag Weight",
   "settings.rec.visual_weight": "Visual Weight",
+  "settings.rec.feedback_weight": "Feedback Weight",
   "settings.rec.strictness": "Strictness",
   "settings.rec.candidate_limit": "Candidate Limit",
   "settings.rec.tag_floor": "Tag Floor Score",

@@ -324,50 +324,6 @@ def _with_gaussian_jitter(vec: list[float], sigma: float, rng: random.Random) ->
     return _normalize_l2(out)
 
 
-def _avg_vec(vs: list[list[float]]) -> list[float]:
-    if not vs:
-        return []
-    dim = len(vs[0])
-    acc = [0.0] * dim
-    used = 0
-    for v in vs:
-        if len(v) != dim:
-            continue
-        used += 1
-        for i in range(dim):
-            acc[i] += float(v[i])
-    if used <= 0:
-        return []
-    return [x / float(used) for x in acc]
-
-
-def _kmeans(points: list[list[float]], k: int, iters: int = 8) -> list[list[float]]:
-    pts = [p for p in points if p]
-    if not pts:
-        return []
-    k = max(1, min(int(k), len(pts)))
-    n = len(pts)
-    centroids: list[list[float]] = []
-    for i in range(k):
-        idx = int((i + 0.5) * n / k)
-        if idx >= n:
-            idx = n - 1
-        centroids.append(list(pts[idx]))
-    for _ in range(max(1, int(iters))):
-        buckets: list[list[list[float]]] = [[] for _ in range(k)]
-        for p in pts:
-            best_i = 0
-            best_d = float("inf")
-            for i, c in enumerate(centroids):
-                d = _l2(p, c)
-                if d < best_d:
-                    best_d = d
-                    best_i = i
-            buckets[best_i].append(p)
-        centroids = [_avg_vec(buckets[i]) if buckets[i] else centroids[i] for i in range(k)]
-    return centroids
-
-
 def _rec_profile_and_scores(cfg: dict[str, Any]) -> tuple[dict[str, float], list[list[float]], str, int]:
     profile_days = max(1, min(365, int(cfg.get("REC_PROFILE_DAYS", 30))))
     now_ep = int(time.time())
@@ -411,7 +367,13 @@ def _rec_profile_and_scores(cfg: dict[str, Any]) -> tuple[dict[str, float], list
     if len(points) > 320:
         step = max(1, len(points) // 320)
         points = points[::step]
-    centroids = _kmeans(points, k=max(1, min(8, int(cfg.get("REC_CLUSTER_K", 3)))))
+    k_clusters = max(1, min(8, int(cfg.get("REC_CLUSTER_K", 3))))
+    if points and len(points) >= k_clusters:
+        km = KMeans(n_clusters=k_clusters, n_init=10, random_state=42)
+        km.fit(points)
+        centroids = km.cluster_centers_.tolist()
+    else:
+        centroids = []
     return tag_scores, centroids, source, len(samples)
 
 

@@ -273,6 +273,7 @@
   "settings.rec.cache_ttl": "推荐缓存TTL(秒)",
   "settings.rec.tag_weight": "标签权重",
   "settings.rec.visual_weight": "视觉权重",
+  "settings.rec.feedback_weight": "负反馈权重",
   "settings.rec.strictness": "严格度",
   "settings.rec.candidate_limit": "候选上限",
   "settings.rec.tag_floor": "标签下限分数",

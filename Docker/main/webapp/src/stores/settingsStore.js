@@ -172,6 +172,7 @@ export const useSettingsStore = defineStore("settings", () => {
       REC_CLUSTER_CACHE_TTL_S: "settings.rec.cache_ttl",
       REC_TAG_WEIGHT: "settings.rec.tag_weight",
       REC_VISUAL_WEIGHT: "settings.rec.visual_weight",
+      REC_FEEDBACK_WEIGHT: "settings.rec.feedback_weight",
       REC_STRICTNESS: "settings.rec.strictness",
       REC_CANDIDATE_LIMIT: "settings.rec.candidate_limit",
       REC_TAG_FLOOR_SCORE: "settings.rec.tag_floor",
@@ -299,18 +300,37 @@ export const useSettingsStore = defineStore("settings", () => {
   function normalizeRecommendWeights(changedKey) {
     const a = Number(config.value.REC_TAG_WEIGHT ?? 0.55);
     const b = Number(config.value.REC_VISUAL_WEIGHT ?? 0.45);
+    const c = Number(config.value.REC_FEEDBACK_WEIGHT ?? 0.0);
     const ca = Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : 0.55;
     const cb = Number.isFinite(b) ? Math.max(0, Math.min(1, b)) : 0.45;
+    const cc = Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : 0.0;
+
     if (changedKey === "REC_TAG_WEIGHT") {
+      const remaining = 1 - ca;
       config.value.REC_TAG_WEIGHT = ca;
-      config.value.REC_VISUAL_WEIGHT = Number((1 - ca).toFixed(4));
+      config.value.REC_VISUAL_WEIGHT = Number((remaining * cb / (cb + cc || 1)).toFixed(4));
+      config.value.REC_FEEDBACK_WEIGHT = Number((remaining * cc / (cb + cc || 1)).toFixed(4));
     } else if (changedKey === "REC_VISUAL_WEIGHT") {
+      const remaining = 1 - cb;
       config.value.REC_VISUAL_WEIGHT = cb;
-      config.value.REC_TAG_WEIGHT = Number((1 - cb).toFixed(4));
+      config.value.REC_TAG_WEIGHT = Number((remaining * ca / (ca + cc || 1)).toFixed(4));
+      config.value.REC_FEEDBACK_WEIGHT = Number((remaining * cc / (ca + cc || 1)).toFixed(4));
+    } else if (changedKey === "REC_FEEDBACK_WEIGHT") {
+      const remaining = 1 - cc;
+      config.value.REC_FEEDBACK_WEIGHT = cc;
+      config.value.REC_TAG_WEIGHT = Number((remaining * ca / (ca + cb || 1)).toFixed(4));
+      config.value.REC_VISUAL_WEIGHT = Number((remaining * cb / (ca + cb || 1)).toFixed(4));
     } else {
-      const sum = ca + cb;
-      config.value.REC_TAG_WEIGHT = sum <= 0 ? 0.55 : Number((ca / sum).toFixed(4));
-      config.value.REC_VISUAL_WEIGHT = sum <= 0 ? 0.45 : Number((cb / sum).toFixed(4));
+      const sum = ca + cb + cc;
+      if (sum <= 0) {
+        config.value.REC_TAG_WEIGHT = 0.55;
+        config.value.REC_VISUAL_WEIGHT = 0.45;
+        config.value.REC_FEEDBACK_WEIGHT = 0.0;
+      } else {
+        config.value.REC_TAG_WEIGHT = Number((ca / sum).toFixed(4));
+        config.value.REC_VISUAL_WEIGHT = Number((cb / sum).toFixed(4));
+        config.value.REC_FEEDBACK_WEIGHT = Number((cc / sum).toFixed(4));
+      }
     }
   }
 
@@ -336,6 +356,7 @@ export const useSettingsStore = defineStore("settings", () => {
     config.value.REC_STRICTNESS = 0.55;
     config.value.REC_TAG_WEIGHT = 0.55;
     config.value.REC_VISUAL_WEIGHT = 0.45;
+    config.value.REC_FEEDBACK_WEIGHT = 0.0;
     normalizeRecommendWeights();
   }
 
@@ -654,6 +675,7 @@ export const useSettingsStore = defineStore("settings", () => {
   watch(() => config.value.SEARCH_WEIGHT_MIXED_EH_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_EH_TEXT", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
   watch(() => config.value.REC_TAG_WEIGHT, () => normalizeRecommendWeights("REC_TAG_WEIGHT"));
   watch(() => config.value.REC_VISUAL_WEIGHT, () => normalizeRecommendWeights("REC_VISUAL_WEIGHT"));
+  watch(() => config.value.REC_FEEDBACK_WEIGHT, () => normalizeRecommendWeights("REC_FEEDBACK_WEIGHT"));
   watch(() => config.value.REC_STRICTNESS, () => {
     const v = Number(config.value.REC_STRICTNESS ?? 0.55);
     config.value.REC_STRICTNESS = Number((Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.55).toFixed(4));
