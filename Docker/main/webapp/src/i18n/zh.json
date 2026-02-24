@@ -280,6 +280,7 @@
   "settings.rec.touch_penalty_pct": "触及单次降权(%)",
   "settings.rec.impression_penalty_pct": "曝光单次降权(%)",
   "settings.rec.dynamic_expand_enabled": "刷空后自动扩窗",
+  "settings.rec.show_jpn_title": "显示日文标题",
   "settings.recommend.touch_clear": "清空浏览/点击记录",
   "settings.recommend.profile_clear": "清空用户画像",
   "settings.recommend.touch_cleared": "已清理 {n} 条浏览/点击记录",

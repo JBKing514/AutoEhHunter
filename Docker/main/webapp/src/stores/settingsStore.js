@@ -179,6 +179,7 @@ export const useSettingsStore = defineStore("settings", () => {
       REC_TOUCH_PENALTY_PCT: "settings.rec.touch_penalty_pct",
       REC_IMPRESSION_PENALTY_PCT: "settings.rec.impression_penalty_pct",
       REC_DYNAMIC_EXPAND_ENABLED: "settings.rec.dynamic_expand_enabled",
+      REC_SHOW_JPN_TITLE: "settings.rec.show_jpn_title",
       SEARCH_TEXT_WEIGHT: "settings.search.text_weight",
       SEARCH_VISUAL_WEIGHT: "settings.search.visual_weight",
       SEARCH_MIXED_TEXT_WEIGHT: "settings.search.mixed_text_weight",
@@ -252,6 +253,13 @@ export const useSettingsStore = defineStore("settings", () => {
 
   function secretHint(key) {
     return secretState.value[key] ? t("settings.secret.present") : t("settings.secret.empty");
+  }
+
+  function getGalleryTitle(item) {
+    if (config.value.REC_SHOW_JPN_TITLE && item.subtitle) {
+      return item.subtitle;
+    }
+    return item.title || "-";
   }
 
   function normalizeSearchWeights(prefixA, prefixB, changedKey) {
@@ -731,6 +739,7 @@ export const useSettingsStore = defineStore("settings", () => {
     notify,
     labelFor,
     secretHint,
+    getGalleryTitle,
     parseCookie,
     buildCookie,
     parseCsv,

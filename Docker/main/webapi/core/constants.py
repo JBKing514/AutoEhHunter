@@ -58,6 +58,7 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "REC_TOUCH_PENALTY_PCT": {"type": "int", "default": 35, "min": 0, "max": 100},
     "REC_IMPRESSION_PENALTY_PCT": {"type": "int", "default": 3, "min": 0, "max": 100},
     "REC_DYNAMIC_EXPAND_ENABLED": {"type": "bool", "default": True},
+    "REC_SHOW_JPN_TITLE": {"type": "bool", "default": False},
     "SEARCH_TEXT_WEIGHT": {"type": "float", "default": 0.6, "min": 0.0, "max": 1.0},
     "SEARCH_VISUAL_WEIGHT": {"type": "float", "default": 0.4, "min": 0.0, "max": 1.0},
     "SEARCH_MIXED_TEXT_WEIGHT": {"type": "float", "default": 0.5, "min": 0.0, "max": 1.0},

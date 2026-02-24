@@ -280,6 +280,7 @@
   "settings.rec.touch_penalty_pct": "Touch Penalty Per Click (%)",
   "settings.rec.impression_penalty_pct": "Impression Penalty Per Exposure (%)",
   "settings.rec.dynamic_expand_enabled": "Auto Expand Time Window When Exhausted",
+  "settings.rec.show_jpn_title": "Show Japanese Title",
   "settings.recommend.touch_clear": "Clear View/Click Records",
   "settings.recommend.profile_clear": "Clear User Profile",
   "settings.recommend.touch_cleared": "Cleared {n} view/click records",

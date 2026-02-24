@@ -1,34 +1,78 @@
 <template>
           <v-card class="pa-4 mb-4">
-            <div class="d-flex align-center ga-2 flex-wrap">
-              <v-btn icon="mdi-camera-outline" variant="text" @click="imageSearchDialog = true" />
-              <v-btn :color="config.SEARCH_NL_ENABLED ? 'primary' : undefined" :variant="config.SEARCH_NL_ENABLED ? 'tonal' : 'text'" icon="mdi-robot-outline" @click="config.SEARCH_NL_ENABLED = !config.SEARCH_NL_ENABLED" />
+            <div class="d-flex align-center ga-2 mb-3">
               <v-text-field
                 v-model="homeSearchQuery"
-                class="home-search-input"
+                class="home-search-input flex-grow-1"
                 density="compact"
                 hide-details
                 :label="t('home.search.placeholder')"
                 variant="outlined"
+                color="primary"
+                rounded="lg"
                 @keyup.enter="runHomeSearchPlaceholder"
-              />
-              <v-btn color="primary" variant="tonal" prepend-icon="mdi-magnify" @click="runHomeSearchPlaceholder">{{ t('home.search.go') }}</v-btn>
-              <v-btn v-if="homeTab === 'recommend'" color="secondary" variant="tonal" prepend-icon="mdi-shuffle-variant" @click="shuffleRecommendBatch">{{ t('home.recommend.shuffle') }}</v-btn>
-              <v-btn icon="mdi-filter-variant" variant="text" @click="homeFiltersOpen = true" />
+              >
+                <template #prepend-inner>
+                  <v-icon 
+                    class="mr-2 cursor-pointer" 
+                    :color="imageSearchDialog ? 'primary' : 'medium-emphasis'" 
+                    @click="imageSearchDialog = true" 
+                    title="Image Search"
+                  >mdi-camera-outline</v-icon>
+                  <v-icon 
+                    class="cursor-pointer" 
+                    :color="config.SEARCH_NL_ENABLED ? 'primary' : 'medium-emphasis'" 
+                    @click="config.SEARCH_NL_ENABLED = !config.SEARCH_NL_ENABLED" 
+                    title="AI Semantic Search"
+                  >mdi-robot-outline</v-icon>
+                </template>
+                
+                <template #append-inner>
+                  <v-divider vertical class="mx-2" />
+                  <v-icon 
+                    color="primary" 
+                    class="cursor-pointer" 
+                    @click="runHomeSearchPlaceholder"
+                  >mdi-magnify</v-icon>
+                </template>
+              </v-text-field>
+
+              <v-btn v-if="homeTab === 'recommend'" color="secondary" variant="tonal" icon="mdi-shuffle-variant" rounded="lg" @click="shuffleRecommendBatch" />
+              <v-btn color="primary" variant="tonal" icon="mdi-filter-variant" rounded="lg" @click="homeFiltersOpen = true" />
             </div>
-            <div class="d-flex align-center justify-space-between mt-3 flex-wrap ga-2">
-              <v-tabs v-model="homeTab" density="comfortable" color="primary">
-                <v-tab value="recommend">{{ t('home.tab.recommend') }}</v-tab>
-                <v-tab value="history">{{ t('home.tab.history') }}</v-tab>
-                <v-tab value="search">{{ t('home.tab.search') }}</v-tab>
+
+            <div class="d-flex align-center justify-space-between flex-wrap ga-2">
+              <v-tabs v-model="homeTab" density="compact" color="primary">
+                <v-tab value="recommend" class="font-weight-bold">{{ t('home.tab.recommend') }}</v-tab>
+                <v-tab value="history" class="font-weight-bold">{{ t('home.tab.history') }}</v-tab>
+                <v-tab value="search" class="font-weight-bold">{{ t('home.tab.search') }}</v-tab>
               </v-tabs>
-              <v-btn-toggle v-model="homeViewMode" mandatory variant="outlined" class="home-view-toggle flex-shrink-0">
-                <v-btn value="wide" class="text-no-wrap">{{ t('home.view.wide') }}</v-btn>
-                <v-btn value="compact" class="text-no-wrap">{{ t('home.view.compact') }}</v-btn>
-                <v-btn value="list" class="text-no-wrap">{{ t('home.view.list') }}</v-btn>
+
+              <v-btn-toggle 
+                v-model="homeViewMode" 
+                mandatory 
+                variant="outlined" 
+                divided 
+                density="compact" 
+                rounded="lg" 
+                color="primary"
+                class="home-view-toggle flex-shrink-0 bg-surface"
+              >
+                <v-btn value="wide" :title="t('home.view.wide')">
+                  <v-icon>mdi-view-grid-outline</v-icon>
+                </v-btn>
+                <v-btn value="compact" :title="t('home.view.compact')">
+                  <v-icon>mdi-view-module-outline</v-icon>
+                </v-btn>
+                <v-btn value="list" :title="t('home.view.list')">
+                  <v-icon>mdi-view-list-outline</v-icon>
+                </v-btn>
               </v-btn-toggle>
             </div>
-            <div v-if="homeTab === 'recommend'" class="text-caption text-medium-emphasis mt-2">{{ t('home.recommend.longpress_dislike') }}</div>
+            
+            <div v-if="homeTab === 'recommend'" class="text-caption text-medium-emphasis mt-2">
+              {{ t('home.recommend.longpress_dislike') }}
+            </div>
           </v-card>
 
           <v-alert v-if="activeHomeState.error" type="warning" class="mb-3">{{ activeHomeState.error }}</v-alert>
@@ -64,7 +108,7 @@
           <v-list v-if="homeViewMode === 'list'" class="mb-2" lines="two">
             <v-list-item v-for="item in filteredHomeItems" :key="item.id" :subtitle="itemSubtitle(item)">
               <template #title>
-                <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="cover-link-title" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ item.title || '-' }}</a>
+                <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="cover-link-title" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ getGalleryTitle(item) }}</a>
               </template>
               <template #prepend>
                 <div class="list-cover" @contextmenu.prevent>
@@ -108,10 +152,10 @@
                         <div v-if="isRecommendDisliked(item)" class="dislike-mask"><v-icon size="40">mdi-thumb-down</v-icon></div>
                         <div v-if="categoryLabel(item)" class="cat-badge" :style="categoryBadgeStyle(item)">{{ categoryLabel(item) }}</div>
                       </div>
-                      <div v-if="homeViewMode === 'compact'" class="cover-title-overlay">{{ item.title || '-' }}</div>
+                      <div v-if="homeViewMode === 'compact'" class="cover-title-overlay">{{ getGalleryTitle(item) }}</div>
                     </div>
                     <div v-if="homeViewMode !== 'compact'" class="pa-2">
-                      <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="text-body-2 font-weight-medium text-truncate cover-link-title d-block" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ item.title || '-' }}</a>
+                      <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="text-body-2 font-weight-medium text-truncate cover-link-title d-block" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ getGalleryTitle(item) }}</a>
                       <div class="text-caption text-medium-emphasis text-truncate">{{ itemSubtitle(item) }}</div>
                     </div>
                   </v-card>
@@ -124,7 +168,7 @@
                       <v-btn size="small" color="warning" variant="flat" prepend-icon="mdi-thumb-down-outline" @click.stop="markRecommendDislike(item)">{{ t('home.recommend.dislike_action') }}</v-btn>
                     </div>
                   </div>
-                  <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="text-body-2 font-weight-medium mb-1 cover-link-title d-inline-block" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ item.title || '-' }}</a>
+                  <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="text-body-2 font-weight-medium mb-1 cover-link-title d-inline-block" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ getGalleryTitle(item) }}</a>
                   <div v-if="categoryLabel(item)" class="text-caption text-medium-emphasis mb-1">{{ categoryLabel(item) }}</div>
                   <div class="d-flex flex-wrap ga-1">
                     <v-chip
@@ -158,7 +202,7 @@
                   <v-btn size="small" color="warning" variant="flat" prepend-icon="mdi-thumb-down-outline" @click="markRecommendDislike(mobilePreviewItem)">{{ t('home.recommend.dislike_action') }}</v-btn>
                 </div>
               </div>
-              <a :href="itemPrimaryLink(mobilePreviewItem)" class="text-body-2 font-weight-medium mb-1 cover-link-title d-inline-block" target="_blank" rel="noopener noreferrer" @click="onMobileDetailLinkClick(); onRecommendItemOpen(mobilePreviewItem)">{{ mobilePreviewItem.title || '-' }}</a>
+              <a :href="itemPrimaryLink(mobilePreviewItem)" class="text-body-2 font-weight-medium mb-1 cover-link-title d-inline-block" target="_blank" rel="noopener noreferrer" @click="onMobileDetailLinkClick(); onRecommendItemOpen(mobilePreviewItem)">{{ getGalleryTitle(mobilePreviewItem) }}</a>
               <div v-if="categoryLabel(mobilePreviewItem)" class="text-caption text-medium-emphasis mb-1">{{ categoryLabel(mobilePreviewItem) }}</div>
               <div class="d-flex flex-wrap ga-1">
                 <v-chip v-for="tag in itemHoverTags(mobilePreviewItem)" :key="`m-${mobilePreviewItem.id}-${tag}`" size="x-small" variant="outlined" class="hover-tag" :class="{ active: isTagFilterActive(tag) }" @click="toggleTagFilter(tag)">{{ tag }}</v-chip>

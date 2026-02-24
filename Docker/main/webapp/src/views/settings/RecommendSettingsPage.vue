@@ -60,6 +60,15 @@
           hide-details
         />
       </v-col>
+      <v-col cols="12" md="6">
+        <v-switch
+          v-model="config.REC_SHOW_JPN_TITLE"
+          :label="t('settings.rec.show_jpn_title')"
+          color="primary"
+          inset
+          hide-details
+        />
+      </v-col>
       <v-col cols="12" md="6" class="d-flex align-center justify-end ga-2">
         <v-btn color="warning" variant="outlined" @click="clearRecommendTouchesAction">{{ t('settings.recommend.touch_clear') }}</v-btn>
         <v-btn color="error" variant="outlined" @click="clearRecommendProfileAction">{{ t('settings.recommend.profile_clear') }}</v-btn>

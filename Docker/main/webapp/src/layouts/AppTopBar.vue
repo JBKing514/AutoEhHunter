@@ -3,7 +3,7 @@
     <v-app-bar-nav-icon @click="emit('toggle-drawer')" />
     <v-app-bar-title class="font-weight-bold">{{ t(currentTitleKey) }}</v-app-bar-title>
     <v-spacer />
-    <v-btn :icon="themeModeIcon" variant="text" @click="emit('cycle-theme')" />
+    <v-btn :icon="themeModeIcon" variant="text" @click="handleCycleTheme()" />
     <v-menu location="bottom end">
       <template #activator="{ props }">
         <v-btn v-bind="props" icon="mdi-cog-outline" variant="text" />
@@ -15,7 +15,7 @@
           :key="opt.value"
           :title="opt.title"
           :active="lang === opt.value"
-          @click="emit('update:lang', opt.value)"
+          @click="handleLanguageChange(opt.value)"
         />
         <v-divider class="my-1" />
         <v-list-subheader>{{ t('topbar.settings.zoom') }}</v-list-subheader>
@@ -64,6 +64,8 @@
 </template>
 
 <script setup>
+import { useSettingsStore } from "../stores/settingsStore"; 
+
 defineProps({
   currentTitleKey: { type: String, required: true },
   themeModeIcon: { type: String, required: true },
@@ -86,4 +88,26 @@ const emit = defineEmits([
   "go-settings",
   "logout",
 ]);
+
+const settings = useSettingsStore();
+const handleLanguageChange = async (newLang) => {
+  emit("update:lang", newLang);
+  settings.config.DATA_UI_LANG = newLang;
+  try {
+    await settings.saveConfig();
+  } catch (e) {
+    console.error("Failed to save language to DB", e);
+  }
+};
+const handleCycleTheme = async () => {
+  emit("cycle-theme");
+  const current = settings.config.DATA_UI_THEME_MODE || "system";
+  const next = current === "system" ? "light" : current === "light" ? "dark" : "system";
+  settings.config.DATA_UI_THEME_MODE = next;
+  try {
+    await settings.saveConfig();
+  } catch (e) {
+    console.error("Failed to save theme to DB", e);
+  }
+};
 </script>

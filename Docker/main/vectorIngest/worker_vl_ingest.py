@@ -299,7 +299,7 @@ class OpenAICompatClient:
         return h
 
     def chat_completions(self, model: str, messages: list[dict[str, Any]], temperature: float = 0.2, max_tokens: int = 800) -> str:
-        url = f"{self.base_url.rstrip('/')}/v1/chat/completions"
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
         payload = {
             "model": model,
             "messages": messages,
@@ -342,7 +342,7 @@ class OpenAICompatClient:
         raise RuntimeError("Unexpected chat completion payload")
 
     def embeddings(self, model: str, text: str) -> list[float]:
-        url = f"{self.base_url.rstrip('/')}/v1/embeddings"
+        url = f"{self.base_url.rstrip('/')}/embeddings"
         payload = {"model": model, "input": text}
         r = _request_with_retry(
             method="POST",

@@ -128,6 +128,13 @@ export const useDashboardStore = defineStore("dashboard", () => {
     return _t(key, vars);
   }
 
+  function getGalleryTitle(item) {
+    if (config.value.REC_SHOW_JPN_TITLE && item.subtitle) {
+      return item.subtitle;
+    }
+    return item.title || "-";
+  }
+
   function searchResultLimit() {
     const config = _getConfig();
     if (config.SEARCH_RESULT_INFINITE) return 300;
@@ -771,5 +778,6 @@ export const useDashboardStore = defineStore("dashboard", () => {
     bindHomeInfiniteScroll,
     clearHomeObserver,
     clearTouchPreviewTimer,
+    getGalleryTitle,
   };
 });
