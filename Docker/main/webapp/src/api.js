@@ -140,6 +140,21 @@ export async function updateConfig(values) {
   return data;
 }
 
+export async function downloadAppConfigBackup() {
+  const res = await api.get("/config/app-config/download", { responseType: "blob" });
+  return res.data;
+}
+
+export async function restoreAppConfigBackup(file) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post("/config/app-config/restore", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000,
+  });
+  return data;
+}
+
 export async function getConfigSchema() {
   const { data } = await api.get("/config/schema");
   return data;

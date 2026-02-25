@@ -1,4 +1,5 @@
 import importlib
+import json
 import sys
 import threading
 import time
@@ -8,10 +9,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 
 from ..core.config_values import as_bool as _as_bool
 from ..core.config_values import normalize_value as _normalize_value
-from ..core.constants import CONFIG_SPECS, PLUGINS_DIR, RUNTIME_DIR, TRANSLATION_DIR
+from ..core.constants import APP_CONFIG_FILE, CONFIG_SPECS, PLUGINS_DIR, RUNTIME_DIR, TRANSLATION_DIR
 from ..core.runtime_state import model_dl_lock, model_dl_state
 from ..core.schemas import ConfigUpdateRequest, ProviderModelsRequest, SetupValidateDbRequest, SetupValidateLrrRequest
 from ..services.ai_provider import _provider_models, check_http
@@ -257,6 +259,49 @@ def update_config(req: ConfigUpdateRequest) -> dict[str, Any]:
     apply_runtime_timezone()
     sync_scheduler()
     return {"ok": True, "saved_json": True, "saved_db": ok_db, "db_error": db_err}
+
+
+@router.get("/api/config/app-config/download")
+def download_app_config_json() -> FileResponse:
+    ensure_dirs()
+    if not APP_CONFIG_FILE.exists():
+        cfg, _ = resolve_config()
+        _save_json_config(cfg)
+    return FileResponse(
+        path=str(APP_CONFIG_FILE),
+        filename="app_config.json",
+        media_type="application/json",
+    )
+
+
+@router.post("/api/config/app-config/restore")
+async def restore_app_config_json(file: UploadFile = File(...)) -> dict[str, Any]:
+    ensure_dirs()
+    name = str(file.filename or "app_config.json").strip().lower()
+    if not name.endswith(".json"):
+        raise HTTPException(status_code=400, detail="only .json file is allowed")
+    body = await file.read()
+    if not body:
+        raise HTTPException(status_code=400, detail="empty file")
+    try:
+        obj = json.loads(body.decode("utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"invalid json: {e}")
+    if not isinstance(obj, dict):
+        raise HTTPException(status_code=400, detail="invalid app_config payload")
+    if "values" in obj and not isinstance(obj.get("values"), dict):
+        raise HTTPException(status_code=400, detail="invalid app_config payload: values must be object")
+
+    APP_CONFIG_FILE.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    apply_runtime_timezone()
+    sync_scheduler()
+    return {
+        "ok": True,
+        "path": str(APP_CONFIG_FILE),
+        "bytes": len(body),
+        "updated_at": datetime.fromtimestamp(APP_CONFIG_FILE.stat().st_mtime, tz=_runtime_tzinfo()).isoformat(timespec="seconds"),
+        "note": "Restored runtime app_config.json only. Database config is unchanged.",
+    }
 
 
 @router.get("/api/dev/schema")

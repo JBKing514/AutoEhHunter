@@ -69,6 +69,16 @@
       </v-col>
     </v-row>
   </v-card>
+
+  <v-card class="pa-4 mb-4">
+    <div class="text-subtitle-1 font-weight-medium mb-3 text-warning">{{ t('settings.app_config_backup.title') }}</div>
+    <div class="text-caption text-medium-emphasis mb-3">{{ t('settings.app_config_backup.hint') }}</div>
+    <input ref="appConfigRestoreRef" type="file" accept="application/json,.json" class="d-none" @change="onAppConfigRestoreChange" />
+    <div class="d-flex ga-2 flex-wrap">
+      <v-btn variant="outlined" color="primary" :disabled="!settingsUnlocked" @click="downloadAppConfigBackupAction">{{ t('settings.app_config_backup.download') }}</v-btn>
+      <v-btn variant="outlined" color="warning" :disabled="!settingsUnlocked" @click="appConfigRestoreRef && appConfigRestoreRef.click()">{{ t('settings.app_config_backup.restore') }}</v-btn>
+    </div>
+  </v-card>
   </div>
 
   <v-card class="pa-4 mb-4">

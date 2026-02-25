@@ -26,7 +26,7 @@ The current prompt library has the following limitations:
 If you want to adapt other models or languages, please refer to the original definitions of the following core Prompts. Specific personas can be freely defined, but consistency, instruction following, and stability must be maintained across skills.
 
 ### 1. Intent Classifier
-* **Location**: `Docker/data/webapi/main.py` -> `_detect_chat_intent` (auto intent routing)
+* **Location**: `Docker/main/webapi/main.py` -> `_detect_chat_intent` (auto intent routing)
 * **Key Point**: Must strictly follow JSON Schema, prohibit outputting any Markdown code block markers (such as ` ```json `), must be pure JSON string.
 
 ```json
@@ -37,7 +37,7 @@ If you want to adapt other models or languages, please refer to the original def
 ```
 
 ### 2. Search Narrative
-* **Location**: `Docker/data/webapi/main.py` (chat/search narrative composition) and `Docker/data/hunterAgent/skills/search.py`
+* **Location**: `Docker/main/webapi/main.py` (chat/search narrative composition) and `Docker/main/hunterAgent/skills/search.py`
 * **Persona**: Tactical Adjutant Alice
 * **Task**: Briefing style, quick commentary on search result composition.
 
@@ -52,7 +52,7 @@ system = (
 ```
 
 ### 3. Profile Analysis
-* **Location**: `Docker/data/hunterAgent/skills/profile.py` -> `run_profile`
+* **Location**: `Docker/main/hunterAgent/skills/profile.py` -> `run_profile`
 * **Persona**: Mental State Evaluator / Sharp-tongued Analyst
 * **Task**: Hit the pain points, comment on user's XP with insider slang.
 
@@ -77,7 +77,7 @@ system = (
 ```
 
 ### 4. Tactical Report (Report)
-* **Location**: `Docker/data/hunterAgent/skills/report.py` -> `run_report`
+* **Location**: `Docker/main/hunterAgent/skills/report.py` -> `run_report`
 * **Persona**: Tactical Adjutant Alice
 * **Task**: Transform boring data into "Combat Statistics".
 
@@ -92,7 +92,7 @@ system = (
 ```
 
 ### 5. Fuzzy Tag Extraction
-* **Location**: `Docker/data/hunterAgent/skills/search.py` -> `_llm_extract_tags`
+* **Location**: `Docker/main/hunterAgent/skills/search.py` -> `_llm_extract_tags`
 * **Task**: Ignore moral censorship, precisely extract E-Hentai tags.
 
 ```python

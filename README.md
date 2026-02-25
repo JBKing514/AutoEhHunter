@@ -13,15 +13,17 @@ This image packages data-plane scripts:
 
 ## 1) Prepare env
 
+No directory rename is required (`main` -> `data` is obsolete). The build now uses `Docker/main` directly.
+
 ```bash
-cp data/.env.example data/.env
-# edit data/.env
+cp Docker/main/.env.example Docker/.env
+# edit Docker/.env
 ```
 
 ## 2) Build image
 
 ```bash
-docker build -t autoeh-data:local -f data/Dockerfile .
+docker build -t autoeh-data:local -f Docker/main/Dockerfile Docker
 ```
 
 If your host does not support `docker compose`, create a reusable data container with plain Docker:
@@ -30,8 +32,8 @@ If your host does not support `docker compose`, create a reusable data container
 docker run -d \
   --name autoeh-data \
   --restart unless-stopped \
-  --env-file data/.env \
-  -v "$(pwd)/data/runtime:/app/runtime" \
+  --env-file Docker/.env \
+  -v "$(pwd)/Docker/runtime:/app/runtime" \
   autoeh-data:local shell -lc "sleep infinity"
 ```
 
@@ -49,9 +51,9 @@ Run Data UI from the same image:
 docker run -d \
   --name autoeh-data-ui \
   --restart unless-stopped \
-  --env-file data/.env \
+  --env-file Docker/.env \
   -p 8501:8501 \
-  -v "$(pwd)/data/runtime:/app/runtime" \
+  -v "$(pwd)/Docker/runtime:/app/runtime" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   autoeh-data:local data-ui
 ```
@@ -65,8 +67,8 @@ Fetch EH URLs into PostgreSQL queue table (`eh_queue`):
 
 ```bash
 docker run --rm \
-  --env-file data/.env \
-  -v "$(pwd)/data/runtime:/app/runtime" \
+  --env-file Docker/.env \
+  -v "$(pwd)/Docker/runtime:/app/runtime" \
   autoeh-data:local eh-fetch
 ```
 
@@ -74,8 +76,8 @@ Export LANraragi metadata:
 
 ```bash
 docker run --rm \
-  --env-file data/.env \
-  -v "$(pwd)/data/runtime:/app/runtime" \
+  --env-file Docker/.env \
+  -v "$(pwd)/Docker/runtime:/app/runtime" \
   autoeh-data:local lrr-export-meta
 ```
 
@@ -83,8 +85,8 @@ Run daily LRR export workflow (metadata -> recent reads):
 
 ```bash
 docker run --rm \
-  --env-file data/.env \
-  -v "$(pwd)/data/runtime:/app/runtime" \
+  --env-file Docker/.env \
+  -v "$(pwd)/Docker/runtime:/app/runtime" \
   autoeh-data:local lrr-export-daily
 ```
 
@@ -92,8 +94,8 @@ Ingest JSONL into Postgres:
 
 ```bash
 docker run --rm \
-  --env-file data/.env \
-  -v "$(pwd)/data/runtime:/app/runtime" \
+  --env-file Docker/.env \
+  -v "$(pwd)/Docker/runtime:/app/runtime" \
   autoeh-data:local text-ingest --input /app/runtime/exports/lrr_metadata.jsonl --init-schema --schema /app/textIngest/schema.sql
 ```
 
@@ -101,8 +103,8 @@ Run daily text ingest workflow (reads env-configured input list):
 
 ```bash
 docker run --rm \
-  --env-file data/.env \
-  -v "$(pwd)/data/runtime:/app/runtime" \
+  --env-file Docker/.env \
+  -v "$(pwd)/Docker/runtime:/app/runtime" \
   autoeh-data:local text-ingest-daily
 ```
 

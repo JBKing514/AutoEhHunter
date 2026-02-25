@@ -3,7 +3,7 @@ services:
     image: autoeh-data:local
     build:
       context: .
-      dockerfile: data/Dockerfile
+      dockerfile: main/Dockerfile
     container_name: autoeh-data-ui
     command: ["data-ui"]
     environment:
@@ -17,5 +17,5 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./data/runtime:/app/runtime
+      - ./runtime:/app/runtime
     restart: unless-stopped

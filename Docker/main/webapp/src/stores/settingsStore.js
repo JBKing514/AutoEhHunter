@@ -6,6 +6,7 @@ import {
   clearRuntimeDeps,
   clearSiglip,
   clearThumbCache,
+  downloadAppConfigBackup,
   downloadSiglip,
   getConfig,
   getConfigSchema,
@@ -18,6 +19,7 @@ import {
   getThumbCacheStats,
   getTranslationStatus,
   injectDevSchema,
+  restoreAppConfigBackup,
   updateConfig,
   uploadDevSchema,
   uploadSkillPlugin,
@@ -44,6 +46,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const userSkills = ref([]);
   const pluginFiles = ref([]);
   const pluginUploadRef = ref(null);
+  const appConfigRestoreRef = ref(null);
   const devSchemaUploadRef = ref(null);
   const devSchemaStatus = ref({ exists: false, size_kb: 0, path: "", updated_at: "" });
   const devSchemaInjecting = ref(false);
@@ -464,6 +467,37 @@ export const useSettingsStore = defineStore("settings", () => {
     await loadConfigData();
   }
 
+  async function downloadAppConfigBackupAction() {
+    try {
+      const blob = await downloadAppConfigBackup();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "app_config.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      notify(t("settings.app_config_backup.downloaded"), "success");
+    } catch (e) {
+      notify(String(e?.response?.data?.detail || e), "warning");
+    }
+  }
+
+  async function onAppConfigRestoreChange(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    try {
+      const res = await restoreAppConfigBackup(file);
+      notify(String(res?.note || t("settings.app_config_backup.restored")), "success");
+      await loadConfigData();
+    } catch (e) {
+      notify(String(e?.response?.data?.detail || e), "warning");
+    } finally {
+      if (appConfigRestoreRef.value) appConfigRestoreRef.value.value = "";
+    }
+  }
+
   async function reloadIngestModels() {
     const base = String(config.value.INGEST_API_BASE || "").trim();
     if (!base) {
@@ -755,6 +789,7 @@ export const useSettingsStore = defineStore("settings", () => {
     userSkills,
     pluginFiles,
     pluginUploadRef,
+    appConfigRestoreRef,
     devSchemaUploadRef,
     devSchemaStatus,
     devSchemaInjecting,
@@ -797,6 +832,8 @@ export const useSettingsStore = defineStore("settings", () => {
     resetRecommendPreset,
     loadConfigData,
     saveConfig,
+    downloadAppConfigBackupAction,
+    onAppConfigRestoreChange,
     reloadIngestModels,
     reloadLlmModels,
     loadThumbCacheStats,

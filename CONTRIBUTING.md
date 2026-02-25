@@ -24,7 +24,7 @@
 如果您想适配其他模型或语言，请参考以下核心 Prompt 的原始定义。具体人设可自由定义，但需要保持在各技能之间的一致性和指令遵循和稳定性。
 
 ### 1. 意图识别 (Intent Classifier)
-* **位置**: `Docker/data/webapi/main.py` -> `_detect_chat_intent`（自动意图路由）
+* **位置**: `Docker/main/webapi/main.py` -> `_detect_chat_intent`（自动意图路由）
 * **关键点**: 必须严格遵循 JSON Schema，禁止输出任何 Markdown 代码块标记（如 ` ```json `），必须是纯 JSON 字符串。
 
 ```json
@@ -35,7 +35,7 @@
 ```
 
 ### 2. 检索解说 (Search Narrative)
-* **位置**: `Docker/data/webapi/main.py`（聊天/检索叙事组装）与 `Docker/data/hunterAgent/skills/search.py`
+* **位置**: `Docker/main/webapi/main.py`（聊天/检索叙事组装）与 `Docker/main/hunterAgent/skills/search.py`
 * **人设**: 战术副官 Alice
 * **任务**: 简报风格，快速锐评检索结果成分。
 
@@ -50,7 +50,7 @@ system = (
 ```
 
 ### 3. 用户画像 (Profile Analysis)
-* **位置**: `Docker/data/hunterAgent/skills/profile.py` -> `run_profile`
+* **位置**: `Docker/main/hunterAgent/skills/profile.py` -> `run_profile`
 * **人设**: 精神状态评估员 / 毒舌分析师
 * **任务**: 直击痛点，用圈内黑话点评用户的 XP。
 
@@ -75,7 +75,7 @@ system = (
 ```
 
 ### 4. 战术汇报 (Report)
-* **位置**: `Docker/data/hunterAgent/skills/report.py` -> `run_report`
+* **位置**: `Docker/main/hunterAgent/skills/report.py` -> `run_report`
 * **人设**: 战术副官 Alice
 * **任务**: 将枯燥的数据转化为“战果统计”。
 
@@ -90,7 +90,7 @@ system = (
 ```
 
 ### 5. 模糊搜索标签映射 (Fuzzy Tag Extraction)
-* **位置**: `Docker/data/hunterAgent/skills/search.py` -> `_llm_extract_tags`
+* **位置**: `Docker/main/hunterAgent/skills/search.py` -> `_llm_extract_tags`
 * **任务**: 无视道德审查，精准提取 E-Hentai 标签。
 
 ```python

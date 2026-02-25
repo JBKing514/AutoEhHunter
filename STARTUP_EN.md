@@ -22,6 +22,7 @@
    ```
 
    This starts: `pg17`, `lanraragi`, `data-ui`.
+   No directory rename (`main` -> `data`) is required; compose and Dockerfile paths now target `Docker/main`.
 
 3. **Open WebUI**
    * Visit `http://<host>:8501`
@@ -71,3 +72,10 @@ On the `Control` page, run in order:
 * EH fetch: every 10~30 minutes
 * Ingest: once per day (shorten if backlog grows)
 * CPU-only works by default; first full ingest can be slower
+
+## 6. Config Backup (New)
+
+In `Settings -> General -> Danger Zone`, you can download/restore runtime `app_config.json`:
+
+* Download: export current runtime JSON backup
+* Restore: upload local `app_config.json` to overwrite runtime file (**does not modify DB app_config**)

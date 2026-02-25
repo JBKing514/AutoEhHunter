@@ -22,6 +22,7 @@
    ```
 
    该模板会拉起：`pg17`、`lanraragi`、`data-ui`。
+   无需将目录名从 `main` 重命名为 `data`，当前 Compose 与 Dockerfile 已统一使用 `Docker/main`。
 
 3. **访问 WebUI**
    * 浏览器打开 `http://<host>:8501`。
@@ -71,3 +72,10 @@
 * EH 抓取：每 10~30 分钟
 * 入库：每天 1 次（按增量可缩短）
 * CPU-only 默认可用，首轮全量入库耗时更长
+
+## 6. 配置备份（新增）
+
+在 `Settings -> General -> 危险区域` 中可下载/恢复运行时 `app_config.json`：
+
+* 下载：导出当前运行时 JSON 备份
+* 恢复：上传本地 `app_config.json` 覆盖运行时文件（**不会修改数据库 app_config**）

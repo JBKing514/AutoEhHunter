@@ -122,6 +122,8 @@ flowchart TB
 * [中文启动指南](STARTUP.md)
 * [Contribution Guide](CONTRIBUTING_EN.md)
 
+No directory rename is required (`main` -> `data` is obsolete). Current compose/docker paths target `Docker/main`.
+
 ## Config & Persistence
 
 - Priority: `app_config(DB) > JSON fallback > .env`

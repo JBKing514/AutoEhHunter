@@ -1,10 +1,10 @@
 FROM node:20-bookworm-slim AS webbuild
 
 WORKDIR /webapp
-COPY data/webapp/package.json /webapp/package.json
-COPY data/webapp/index.html /webapp/index.html
-COPY data/webapp/vite.config.js /webapp/vite.config.js
-COPY data/webapp/src /webapp/src
+COPY main/webapp/package.json /webapp/package.json
+COPY main/webapp/index.html /webapp/index.html
+COPY main/webapp/vite.config.js /webapp/vite.config.js
+COPY main/webapp/src /webapp/src
 RUN npm install --no-audit --no-fund && npm run build
 
 FROM python:3.11-slim
@@ -23,19 +23,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY data/requirements.txt /app/requirements.txt
-COPY data/ehCrawler /app/ehCrawler
-COPY data/lrrDataFlush /app/lrrDataFlush
-COPY data/textIngest /app/textIngest
-COPY data/vectorIngest /app/vectorIngest
-COPY data/hunterAgent /app/hunterAgent
-COPY data/webapi /app/webapi
+COPY main/requirements.txt /app/requirements.txt
+COPY main/ehCrawler /app/ehCrawler
+COPY main/lrrDataFlush /app/lrrDataFlush
+COPY main/textIngest /app/textIngest
+COPY main/vectorIngest /app/vectorIngest
+COPY main/hunterAgent /app/hunterAgent
+COPY main/webapi /app/webapi
 COPY --from=webbuild /webapp/dist /app/webapi/static
 
 RUN python -m pip install --upgrade pip && \
     python -m pip install -r /app/requirements.txt
 
-COPY data/entrypoint.sh /app/entrypoint.sh
+COPY main/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x \
     /app/entrypoint.sh \
     /app/ehCrawler/run_eh_fetch.sh \
