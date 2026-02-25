@@ -42,7 +42,7 @@
   "home.recommend.disliked": "Marked as not interested, similar items will be reduced",
   "home.recommend.dislike_action": "Not Interested",
   "home.recommend.shuffle": "Shuffle",
-  "home.recommend.longpress_dislike": "Press and hold for 2s to dislike",
+  "home.recommend.longpress_dislike": "Press and hold thumbnail to dislike",
   "home.view.wide": "Wide",
   "home.view.compact": "Compact",
   "home.view.list": "List",
