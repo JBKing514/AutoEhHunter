@@ -96,6 +96,8 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "EH_REQUEST_SLEEP": {"type": "float", "default": 4.0, "min": 0.0, "max": 120.0},
     "EH_SAMPLING_DENSITY": {"type": "float", "default": 1.0, "min": 0.0, "max": 1.0},
     "EH_USER_AGENT": {"type": "text", "default": "AutoEhHunter/1.0"},
+    "EH_HTTP_PROXY": {"type": "text", "default": "", "secret": True},
+    "EH_HTTPS_PROXY": {"type": "text", "default": "", "secret": True},
     "EH_COOKIE": {"type": "text", "default": "", "secret": True},
     "EH_FILTER_CATEGORY": {"type": "text", "default": ""},
     "EH_MIN_RATING": {"type": "float", "default": 0.0, "min": 0.0, "max": 5.0},

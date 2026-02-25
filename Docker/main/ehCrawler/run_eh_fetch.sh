@@ -31,6 +31,8 @@ EH_SAMPLING_DENSITY=${EH_SAMPLING_DENSITY:-1}
 EH_FETCH_MAX_RUN_MINUTES=${EH_FETCH_MAX_RUN_MINUTES:-0}
 EH_COOKIE=${EH_COOKIE:-}
 EH_USER_AGENT=${EH_USER_AGENT:-AutoEhHunter/1.0}
+EH_HTTP_PROXY=${EH_HTTP_PROXY:-}
+EH_HTTPS_PROXY=${EH_HTTPS_PROXY:-}
 EH_STATE_FILE=${EH_STATE_FILE:-"${SCRIPT_DIR}/cache/eh_incremental_state.json"}
 EH_QUEUE_FILE=${EH_QUEUE_FILE:-"${SCRIPT_DIR}/eh_gallery_queue.txt"}
 EH_RESET_STATE=${EH_RESET_STATE:-0}
@@ -50,6 +52,8 @@ Environment variables:
   EH_FETCH_MAX_RUN_MINUTES  Default: 0 (0 means no runtime limit)
   EH_COOKIE                 Optional cookie header
   EH_USER_AGENT             Default: AutoEhHunter/1.0
+  EH_HTTP_PROXY             Optional HTTP proxy for EH requests
+  EH_HTTPS_PROXY            Optional HTTPS proxy for EH requests
   EH_STATE_FILE             Default: ./cache/eh_incremental_state.json
   EH_QUEUE_FILE             [deprecated] legacy queue file path
   EH_RESET_STATE            Default: 0
@@ -101,6 +105,12 @@ FETCH_ARGS=(
 
 if [[ -n "$EH_COOKIE" ]]; then
   FETCH_ARGS+=(--cookie "$EH_COOKIE")
+fi
+if [[ -n "$EH_HTTP_PROXY" ]]; then
+  FETCH_ARGS+=(--http-proxy "$EH_HTTP_PROXY")
+fi
+if [[ -n "$EH_HTTPS_PROXY" ]]; then
+  FETCH_ARGS+=(--https-proxy "$EH_HTTPS_PROXY")
 fi
 if _as_bool "$EH_RESET_STATE"; then
   FETCH_ARGS+=(--reset-state)

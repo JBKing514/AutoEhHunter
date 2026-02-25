@@ -589,6 +589,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--sleep-seconds", type=float, default=4.0, help="Sleep seconds between EH requests")
     ap.add_argument("--cookie", default="", help="Optional Cookie header for EH/EX access")
     ap.add_argument("--user-agent", default="AutoEhHunter/1.0", help="HTTP User-Agent")
+    ap.add_argument("--http-proxy", default="", help="HTTP proxy for EH crawl/ingest requests")
+    ap.add_argument("--https-proxy", default="", help="HTTPS proxy for EH crawl/ingest requests")
     ap.add_argument(
         "--retry-fail-embedding",
         action="store_true",
@@ -660,6 +662,10 @@ def main(argv: list[str]) -> int:
             args.cookie = str(db_cfg.get("EH_COOKIE", "")).strip()
         if args.user_agent == "AutoEhHunter/1.0" and str(db_cfg.get("EH_USER_AGENT", "")).strip():
             args.user_agent = str(db_cfg.get("EH_USER_AGENT", "")).strip()
+        if not str(args.http_proxy or "").strip() and str(db_cfg.get("EH_HTTP_PROXY", "")).strip():
+            args.http_proxy = str(db_cfg.get("EH_HTTP_PROXY", "")).strip()
+        if not str(args.https_proxy or "").strip() and str(db_cfg.get("EH_HTTPS_PROXY", "")).strip():
+            args.https_proxy = str(db_cfg.get("EH_HTTPS_PROXY", "")).strip()
         if args.api_url == DEFAULT_API_URL and str(db_cfg.get("EH_API_URL", "")).strip():
             args.api_url = str(db_cfg.get("EH_API_URL", "")).strip()
 
@@ -693,9 +699,17 @@ def main(argv: list[str]) -> int:
         url_map.setdefault((gid, token), normalized)
 
     session = requests.Session()
+    session.trust_env = False
     session.headers.update({"User-Agent": args.user_agent})
     if args.cookie.strip():
         session.headers.update({"Cookie": args.cookie.strip()})
+    proxies = {}
+    if str(args.http_proxy or "").strip():
+        proxies["http"] = str(args.http_proxy).strip()
+    if str(args.https_proxy or "").strip():
+        proxies["https"] = str(args.https_proxy).strip()
+    if proxies:
+        session.proxies.update(proxies)
 
     cache_path = Path(args.translation_cache)
     translation_text = _download_translation_payload(

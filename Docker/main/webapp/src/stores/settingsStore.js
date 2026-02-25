@@ -237,6 +237,8 @@ export const useSettingsStore = defineStore("settings", () => {
       EH_REQUEST_SLEEP: "settings.eh.request_sleep",
       EH_SAMPLING_DENSITY: "settings.eh.sampling_density",
       EH_USER_AGENT: "settings.eh.user_agent",
+      EH_HTTP_PROXY: "settings.eh.http_proxy",
+      EH_HTTPS_PROXY: "settings.eh.https_proxy",
       EH_MIN_RATING: "settings.eh.min_rating",
       EH_FILTER_TAG: "settings.eh.filter_tag",
       TEXT_INGEST_BATCH_SIZE: "settings.text_ingest.batch",

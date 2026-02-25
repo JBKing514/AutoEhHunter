@@ -66,6 +66,8 @@
         <v-col cols="12" md="4"><v-text-field v-model="config.EH_REQUEST_SLEEP" :label="t('settings.eh.request_sleep')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
         <v-col cols="12" md="4"><v-text-field v-model="config.EH_SAMPLING_DENSITY" :label="t('settings.eh.sampling_density')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
         <v-col cols="12" md="4"><v-text-field v-model="config.EH_USER_AGENT" :label="t('settings.eh.user_agent')" variant="outlined" density="compact" color="primary" /></v-col>
+        <v-col cols="12" md="6"><v-text-field v-model="config.EH_HTTP_PROXY" :label="t('settings.eh.http_proxy')" variant="outlined" density="compact" color="primary" placeholder="http://127.0.0.1:7890" /></v-col>
+        <v-col cols="12" md="6"><v-text-field v-model="config.EH_HTTPS_PROXY" :label="t('settings.eh.https_proxy')" variant="outlined" density="compact" color="primary" placeholder="http://127.0.0.1:7890" /></v-col>
         <v-col cols="12" md="4"><v-text-field v-model="config.EH_MIN_RATING" :label="t('settings.eh.min_rating')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
         <v-col cols="12" md="4"><v-text-field v-model="config.EH_QUEUE_LIMIT" :label="t('settings.eh.queue_limit')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
       </v-row>

@@ -385,6 +385,8 @@
   "settings.eh.request_sleep": "EH 请求间隔(秒)",
   "settings.eh.sampling_density": "EH URL 采样密度",
   "settings.eh.user_agent": "EH User-Agent",
+  "settings.eh.http_proxy": "EH HTTP代理",
+  "settings.eh.https_proxy": "EH HTTPS代理",
   "settings.eh.cookie": "EH Cookie (可选, EX访问)",
   "settings.eh.filter_category": "EH 分类筛选 (亮=通过, 灭=屏蔽)",
   "settings.eh.allow_category": "允许",

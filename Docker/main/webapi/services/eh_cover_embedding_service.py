@@ -106,11 +106,18 @@ def run_eh_cover_embedding_once(*, include_fail: bool = False, limit: int = 12) 
     model_id = str(cfg.get("SIGLIP_MODEL") or "google/siglip-so400m-patch14-384").strip()
     user_agent = str(cfg.get("EH_USER_AGENT") or "AutoEhHunter/1.0").strip()
     cookie = str(cfg.get("EH_COOKIE") or "").strip()
+    http_proxy = str(cfg.get("EH_HTTP_PROXY") or "").strip()
+    https_proxy = str(cfg.get("EH_HTTPS_PROXY") or "").strip()
 
     session = requests.Session()
+    session.trust_env = False
     session.headers.update({"User-Agent": user_agent or "AutoEhHunter/1.0"})
     if cookie:
         session.headers.update({"Cookie": cookie})
+    if http_proxy:
+        session.proxies["http"] = http_proxy
+    if https_proxy:
+        session.proxies["https"] = https_proxy
 
     picked = 0
     completed = 0

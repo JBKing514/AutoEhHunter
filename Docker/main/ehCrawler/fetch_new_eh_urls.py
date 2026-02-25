@@ -223,6 +223,8 @@ def main(argv: list[str]) -> int:
     )
     ap.add_argument("--cookie", default="", help="Optional Cookie header")
     ap.add_argument("--user-agent", default="Mozilla/5.0", help="HTTP User-Agent")
+    ap.add_argument("--http-proxy", default="", help="HTTP proxy for EH requests")
+    ap.add_argument("--https-proxy", default="", help="HTTPS proxy for EH requests")
     ap.add_argument(
         "--state-file",
         default=str(Path(__file__).resolve().parent / "cache" / "eh_incremental_state.json"),
@@ -248,9 +250,17 @@ def main(argv: list[str]) -> int:
         checkpoint_token = None
 
     session = requests.Session()
+    session.trust_env = False
     session.headers.update({"User-Agent": args.user_agent})
     if args.cookie.strip():
         session.headers.update({"Cookie": args.cookie.strip()})
+    proxies: dict[str, str] = {}
+    if str(args.http_proxy or "").strip():
+        proxies["http"] = str(args.http_proxy).strip()
+    if str(args.https_proxy or "").strip():
+        proxies["https"] = str(args.https_proxy).strip()
+    if proxies:
+        session.proxies.update(proxies)
 
     discovered_new: list[str] = []
     discovered_new_keys: set[tuple[int, str]] = set()

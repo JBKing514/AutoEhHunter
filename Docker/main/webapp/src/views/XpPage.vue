@@ -36,7 +36,7 @@
           </v-card>
 
           <v-card class="pa-4 mb-4">
-            <div class="d-flex align-center justify-space-between mb-3">
+            <div class="d-flex align-center justify-space-between mb-3 flex-wrap ga-2">
               <div class="text-subtitle-1 font-weight-medium">{{ t('xp.chart_title') }}</div>
               <v-btn-toggle
                 v-model="xpChartMode"
@@ -50,17 +50,19 @@
                 <v-btn value="2d" size="small">2D</v-btn>
               </v-btn-toggle>
             </div>
-            <div ref="xpChartEl" style="width: 100%; height: 520px" />
+            <div class="xp-chart-scroll">
+              <div ref="xpChartEl" class="xp-chart-canvas" />
+            </div>
           </v-card>
 
           <v-card class="pa-4 mb-4">
             <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('xp.dendrogram.title') }}</div>
-            <div class="d-flex align-center ga-4 mb-2" v-if="xpResult.dendrogram?.available">
+            <div class="d-flex align-center ga-4 mb-2 flex-wrap" v-if="xpResult.dendrogram?.available">
               <v-pagination v-model="xp.dendro_page" :length="xpResult.dendrogram?.pages || 1" :total-visible="6" />
-              <v-select v-model.number="xp.dendro_page_size" :items="[40,60,80,100,150,200]" label="Page size" style="max-width: 160px" variant="outlined" density="compact" color="primary" hide-details/>
+              <v-select v-model.number="xp.dendro_page_size" :items="[40,60,80,100,150,200]" label="Page size" class="xp-page-size" variant="outlined" density="compact" color="primary" hide-details/>
             </div>
-            <div v-if="xpResult.dendrogram?.available" class="dendro-wrap">
-              <div ref="dendroChartEl" style="width: 100%; height: 800px" />
+            <div v-if="xpResult.dendrogram?.available" class="dendro-wrap xp-chart-scroll">
+              <div ref="dendroChartEl" class="dendro-chart-canvas" />
             </div>
             <v-alert v-else type="info">{{ xpResult.dendrogram?.reason || t('xp.dendrogram.too_few') }}</v-alert>
           </v-card>
@@ -90,3 +92,43 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.xp-chart-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+
+.xp-chart-canvas {
+  width: 100%;
+  height: 520px;
+}
+
+.dendro-chart-canvas {
+  width: 100%;
+  height: 800px;
+}
+
+.xp-page-size {
+  max-width: 160px;
+}
+
+@media (max-width: 960px) {
+  .xp-chart-canvas {
+    min-width: 720px;
+    height: 460px;
+  }
+
+  .dendro-chart-canvas {
+    min-width: 920px;
+    height: 680px;
+  }
+
+  .xp-page-size {
+    max-width: 100%;
+    min-width: 140px;
+  }
+}
+</style>

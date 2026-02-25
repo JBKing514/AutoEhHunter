@@ -385,6 +385,8 @@
   "settings.eh.request_sleep": "EH Request Sleep (seconds)",
   "settings.eh.sampling_density": "EH URL Sampling Density",
   "settings.eh.user_agent": "EH User-Agent",
+  "settings.eh.http_proxy": "EH HTTP Proxy",
+  "settings.eh.https_proxy": "EH HTTPS Proxy",
   "settings.eh.cookie": "EH Cookie (optional, EX access)",
   "settings.eh.filter_category": "EH Category Filter (ON=allow, OFF=block)",
   "settings.eh.allow_category": "Allow",
