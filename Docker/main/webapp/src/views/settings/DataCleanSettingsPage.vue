@@ -1,6 +1,13 @@
 <template>
   <v-card class="pa-4 mb-4">
-    <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('settings.tab.data_clean') }}</div>
+    <div class="d-flex align-center justify-space-between mb-3">
+      <div class="text-subtitle-1 font-weight-medium">{{ t('settings.tab.data_clean') }}</div>
+      <v-btn size="small" variant="tonal" color="primary" :prepend-icon="settingsLocked ? 'mdi-lock' : 'mdi-lock-open-variant'" @click="settingsLocked = !settingsLocked">
+        {{ settingsLocked ? t('settings.lock.unlock') : t('settings.lock.lock') }}
+      </v-btn>
+    </div>
+    <v-alert v-if="settingsLocked" type="warning" variant="tonal" class="mb-3">{{ t('settings.lock.hint') }}</v-alert>
+    <div :class="{ 'settings-locked': settingsLocked }">
     <v-row>
       <v-col cols="12" md="8"><v-text-field v-model="config.INGEST_API_BASE" :label="t('settings.provider.ingest_api_base')" variant="outlined" density="compact" color="primary" /></v-col>
       <v-col cols="12" md="4" class="d-flex align-center"><v-btn variant="outlined" block @click="reloadIngestModels">{{ t('settings.models.reload') }}</v-btn></v-col>
@@ -32,15 +39,27 @@
         <input ref="translationUploadRef" type="file" accept=".json,.jsonl,.txt" @change="onTranslationUploadChange" />
       </v-col>
     </v-row>
+    </div>
   </v-card>
 </template>
 
 <script>
+import { ref } from "vue";
 import { useSettingsStore } from "../../stores/settingsStore";
 
 export default {
   setup() {
-    return useSettingsStore();
+    return {
+      ...useSettingsStore(),
+      settingsLocked: ref(true),
+    };
   },
 };
 </script>
+
+<style scoped>
+.settings-locked {
+  pointer-events: none;
+  opacity: 0.58;
+}
+</style>

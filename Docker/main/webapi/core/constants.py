@@ -53,6 +53,7 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "REC_TAG_WEIGHT": {"type": "float", "default": 0.55, "min": 0.0, "max": 1.0},
     "REC_VISUAL_WEIGHT": {"type": "float", "default": 0.45, "min": 0.0, "max": 1.0},
     "REC_FEEDBACK_WEIGHT": {"type": "float", "default": 0.0, "min": 0.0, "max": 1.0},
+    "REC_PROFILE_WEIGHT": {"type": "float", "default": 0.18, "min": 0.0, "max": 1.0},
     "REC_TEMPERATURE": {"type": "float", "default": 0.3, "min": 0.05, "max": 2.0},
     "REC_CANDIDATE_LIMIT": {"type": "int", "default": 400, "min": 50, "max": 2000},
     "REC_TAG_FLOOR_SCORE": {"type": "float", "default": 0.08, "min": 0.0, "max": 0.4},

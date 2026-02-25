@@ -169,7 +169,10 @@ controlStore.init({
   formatDateTime: formatDateTimeByUi,
 });
 
-xpStore.init({ t });
+xpStore.init({
+  t,
+  getLang: () => layoutStore.lang,
+});
 
 settingsStore.init({
   t,

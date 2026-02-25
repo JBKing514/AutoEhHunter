@@ -34,6 +34,18 @@
       <div class="pa-2">
         <v-btn
           block
+          variant="outlined"
+          color="primary"
+          prepend-icon="mdi-bug-outline"
+          class="mb-2"
+          href="https://github.com/JBKing514/AutoEhHunter/issues"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Feedback
+        </v-btn>
+        <v-btn
+          block
           variant="text"
           color="medium-emphasis"
           @click="emit('update:rail', !rail)"

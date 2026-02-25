@@ -20,13 +20,19 @@
               <v-col cols="12" md="3"><v-text-field v-model.number="xp.topn" type="number" :label="t('xp.cluster_topn')" variant="outlined" density="compact" color="primary"/></v-col>
               <v-col cols="12" md="3" class="d-flex align-center justify-end"><v-btn variant="tonal" @click="resetXpConfig">{{ t('audit.filter.reset') }}</v-btn></v-col>
             </v-row>
-            <div class="d-flex ga-2 align-center mb-2">
-              <v-text-field v-model="newXpExcludeTag" :label="t('xp.filter.exclude_tags')" variant="outlined" density="compact" color="primary" @keyup.enter="addXpExcludeTag" />
-              <v-btn color="primary" @click="addXpExcludeTag">Add</v-btn>
-            </div>
-            <div class="d-flex flex-wrap ga-2">
-              <v-chip v-for="tag in xpExcludeTags" :key="tag" closable @click:close="removeXpExcludeTag(tag)">{{ tag }}</v-chip>
-            </div>
+            <v-autocomplete
+              v-model="xpExcludeTags"
+              v-model:search="newXpExcludeTag"
+              :items="xpExcludeTagSuggestions"
+              multiple
+              chips
+              closable-chips
+              clearable
+              variant="outlined"
+              density="compact"
+              color="primary"
+              :label="t('xp.filter.exclude_tags')"
+            />
           </v-card>
 
           <v-card class="pa-4 mb-4">

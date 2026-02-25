@@ -1,6 +1,6 @@
 import { nextTick, ref, watch } from "vue";
 import { defineStore } from "pinia";
-import { getXpMap } from "../api";
+import { getHomeTagSuggest, getXpMap } from "../api";
 
 export const useXpStore = defineStore("xp", () => {
   const xpChartEl = ref(null);
@@ -27,13 +27,16 @@ export const useXpStore = defineStore("xp", () => {
   const xpResult = ref({ meta: {}, clusters: [], points: [], dendrogram: null });
   const xpExcludeTags = ref([]);
   const newXpExcludeTag = ref("");
+  const xpExcludeTagSuggestions = ref([]);
 
   let _t = (k) => k;
+  let _getLang = () => "zh";
   let plotlyInstance = null;
   let xpTimer = null;
 
   function init(deps = {}) {
     if (typeof deps.t === "function") _t = deps.t;
+    if (typeof deps.getLang === "function") _getLang = deps.getLang;
   }
 
   function t(key, vars = {}) {
@@ -195,6 +198,20 @@ export const useXpStore = defineStore("xp", () => {
     await renderDendrogram();
   }
 
+  async function loadXpExcludeTagSuggestions() {
+    const q = String(newXpExcludeTag.value || "").trim();
+    if (q.length < 2) {
+      xpExcludeTagSuggestions.value = [];
+      return;
+    }
+    try {
+      const res = await getHomeTagSuggest({ q, limit: 10, ui_lang: _getLang() });
+      xpExcludeTagSuggestions.value = Array.isArray(res?.items) ? res.items : [];
+    } catch {
+      xpExcludeTagSuggestions.value = [];
+    }
+  }
+
   function addXpExcludeTag() {
     const v = String(newXpExcludeTag.value || "").trim().toLowerCase();
     if (!v) return;
@@ -265,6 +282,9 @@ export const useXpStore = defineStore("xp", () => {
   });
 
   watch(xpExcludeTags, () => scheduleXpRefresh(), { deep: true });
+  watch(() => newXpExcludeTag.value, () => {
+    loadXpExcludeTagSuggestions().catch(() => null);
+  });
 
   return {
     xpChartEl,
@@ -275,6 +295,7 @@ export const useXpStore = defineStore("xp", () => {
     xpResult,
     xpExcludeTags,
     newXpExcludeTag,
+    xpExcludeTagSuggestions,
     init,
     t,
     ensurePlotly,
@@ -284,6 +305,7 @@ export const useXpStore = defineStore("xp", () => {
     toggleXpChartMode,
     renderDendrogram,
     loadXp,
+    loadXpExcludeTagSuggestions,
     addXpExcludeTag,
     removeXpExcludeTag,
     resetXpConfig,

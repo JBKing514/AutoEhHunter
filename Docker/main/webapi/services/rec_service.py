@@ -493,7 +493,7 @@ def _build_recommendation_items(
     dislike_counts = get_action_counts(str(user_id or "default_user"), list(candidate_key_map.values()), "dislike")
     read_counts = get_action_counts(str(user_id or "default_user"), list(candidate_key_map.values()), "read")
     profile_vec = get_user_profile_vector(str(user_id or "default_user"))
-    profile_weight = 0.18
+    profile_weight = max(0.0, min(1.0, float(cfg.get("REC_PROFILE_WEIGHT", 0.18))))
     jitter_sigma = 0.035
     jitter_enabled = bool(jitter)
     jitter_rng = _jitter_rng(str(user_id or "default_user"), str(jitter_nonce or "")) if jitter_enabled else None
@@ -626,6 +626,7 @@ def _build_recommendation_items(
             "candidate_limit_base": rec_limit_base,
             "temperature": float(T),
             "temperature_base": float(T_base),
+            "profile_weight": float(profile_weight),
             "u_max": float(U_max),
             "mode": mode_s or "default",
             "depth": depth_use,
@@ -670,6 +671,7 @@ def _get_recommendation_items_cached(
             str(cfg.get("REC_TAG_WEIGHT")),
             str(cfg.get("REC_VISUAL_WEIGHT")),
             str(cfg.get("REC_TEMPERATURE")),
+            str(cfg.get("REC_PROFILE_WEIGHT")),
             str(cfg.get("REC_CANDIDATE_LIMIT")),
             str(cfg.get("REC_TAG_FLOOR_SCORE")),
             str(cfg.get("REC_TOUCH_PENALTY_PCT")),

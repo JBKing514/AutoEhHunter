@@ -1,5 +1,16 @@
 <template>
   <div>
+    <v-card class="pa-4 mb-4">
+      <div class="d-flex align-center justify-space-between">
+        <div class="text-subtitle-1 font-weight-medium">{{ t('settings.tab.llm') }}</div>
+        <v-btn size="small" variant="tonal" color="primary" :prepend-icon="settingsLocked ? 'mdi-lock' : 'mdi-lock-open-variant'" @click="settingsLocked = !settingsLocked">
+          {{ settingsLocked ? t('settings.lock.unlock') : t('settings.lock.lock') }}
+        </v-btn>
+      </div>
+      <v-alert v-if="settingsLocked" type="warning" variant="tonal" class="mt-3">{{ t('settings.lock.hint') }}</v-alert>
+    </v-card>
+
+    <div :class="{ 'settings-locked': settingsLocked }">
     <!-- LLM Provider -->
     <v-card class="pa-4 mb-4">
       <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('settings.tab.llm') }}</div>
@@ -137,15 +148,27 @@
         </v-col>
       </v-row>
     </v-card>
+    </div>
   </div>
 </template>
 
 <script>
+import { ref } from "vue";
 import { useSettingsStore } from "../../stores/settingsStore";
 
 export default {
   setup() {
-    return useSettingsStore();
+    return {
+      ...useSettingsStore(),
+      settingsLocked: ref(true),
+    };
   },
 };
 </script>
+
+<style scoped>
+.settings-locked {
+  pointer-events: none;
+  opacity: 0.58;
+}
+</style>

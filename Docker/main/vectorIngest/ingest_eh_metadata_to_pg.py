@@ -538,19 +538,28 @@ def _parse_filter_values(items: list[str] | None) -> set[str]:
     return out
 
 
-def _has_blocked_tag(tags_raw: list[str], blocked_tags: set[str]) -> bool:
+def _has_blocked_tag(tags_raw: list[str], tags_translated: list[str], blocked_tags: set[str]) -> bool:
     if not blocked_tags:
         return False
-    for t in tags_raw:
-        s = str(t or "").strip().lower()
-        if not s:
-            continue
-        if s in blocked_tags:
-            return True
-        if ":" in s:
-            _, val = s.split(":", 1)
-            if val in blocked_tags:
+
+    def _match_list(tags: list[str]) -> bool:
+        for t in tags:
+            s = str(t or "").strip().lower()
+            if not s:
+                continue
+            if s in blocked_tags:
                 return True
+            if ":" in s:
+                _, val = s.split(":", 1)
+                if val in blocked_tags:
+                    return True
+        return False
+
+    # Match either original tags or translated tags.
+    if _match_list(tags_raw):
+        return True
+    if _match_list(tags_translated):
+        return True
     return False
 
 
@@ -761,7 +770,7 @@ def main(argv: list[str]) -> int:
                 filtered_keys.add((gid, token))
                 continue
 
-            if blocked_tags and _has_blocked_tag(tags_raw, blocked_tags):
+            if blocked_tags and _has_blocked_tag(tags_raw, tags_translated, blocked_tags):
                 filtered_tag += 1
                 filtered_keys.add((gid, token))
                 continue

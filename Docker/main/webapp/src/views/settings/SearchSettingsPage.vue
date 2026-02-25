@@ -1,6 +1,13 @@
 <template>
   <v-card class="pa-4 mb-4">
-    <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('settings.tab.search') }}</div>
+    <div class="d-flex align-center justify-space-between mb-3">
+      <div class="text-subtitle-1 font-weight-medium">{{ t('settings.tab.search') }}</div>
+      <v-btn size="small" variant="tonal" color="primary" :prepend-icon="settingsLocked ? 'mdi-lock' : 'mdi-lock-open-variant'" @click="settingsLocked = !settingsLocked">
+        {{ settingsLocked ? t('settings.lock.unlock') : t('settings.lock.lock') }}
+      </v-btn>
+    </div>
+    <v-alert v-if="settingsLocked" type="warning" variant="tonal" class="mb-3">{{ t('settings.lock.hint') }}</v-alert>
+    <div :class="{ 'settings-locked': settingsLocked }">
     <v-alert type="info" variant="tonal" class="mb-4">
       {{ t('settings.search.tuning_hint') }}
       <template #append>
@@ -104,15 +111,27 @@
         <v-slider v-model="config.SEARCH_MIXED_VISUAL_WEIGHT" min="0" max="1" step="0.01" :label="t('settings.search.mixed_visual_weight')" color="primary" density="compact" hide-details thumb-label />
       </v-col>
     </v-row>
+    </div>
   </v-card>
 </template>
 
 <script>
+import { ref } from "vue";
 import { useSettingsStore } from "../../stores/settingsStore";
 
 export default {
   setup() {
-    return useSettingsStore();
+    return {
+      ...useSettingsStore(),
+      settingsLocked: ref(true),
+    };
   },
 };
 </script>
+
+<style scoped>
+.settings-locked {
+  pointer-events: none;
+  opacity: 0.58;
+}
+</style>

@@ -11,6 +11,7 @@ import {
   getConfigSchema,
   getDevSchemaStatus,
   getModelStatus,
+  getHomeTagSuggest,
   getProviderModels,
   getSiglipDownloadStatus,
   getSkills,
@@ -57,6 +58,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const cookieParts = ref({ ipb_member_id: "", ipb_pass_hash: "", sk: "", igneous: "" });
   const ehFilterTags = ref([]);
   const newEhTag = ref("");
+  const ehTagSuggestions = ref([]);
   const ehCategoryDefs = [
     { key: "doujinshi", label: "Doujinshi", color: "#ff5252" },
     { key: "manga", label: "Manga", color: "#fdb813" },
@@ -146,6 +148,24 @@ export const useSettingsStore = defineStore("settings", () => {
     ehFilterTags.value = ehFilterTags.value.filter((x) => x !== tag);
   }
 
+  async function loadEhTagSuggestions() {
+    const q = String(newEhTag.value || "").trim();
+    if (q.length < 2) {
+      ehTagSuggestions.value = [];
+      return;
+    }
+    try {
+      const res = await getHomeTagSuggest({
+        q,
+        limit: 10,
+        ui_lang: String(config.value.DATA_UI_LANG || "zh"),
+      });
+      ehTagSuggestions.value = Array.isArray(res?.items) ? res.items : [];
+    } catch {
+      ehTagSuggestions.value = [];
+    }
+  }
+
   function labelFor(key) {
     const map = {
       POSTGRES_HOST: "settings.pg.host",
@@ -173,6 +193,7 @@ export const useSettingsStore = defineStore("settings", () => {
       REC_TAG_WEIGHT: "settings.rec.tag_weight",
       REC_VISUAL_WEIGHT: "settings.rec.visual_weight",
       REC_FEEDBACK_WEIGHT: "settings.rec.feedback_weight",
+      REC_PROFILE_WEIGHT: "settings.rec.profile_weight",
       REC_TEMPERATURE: "settings.rec.temperature",
       REC_CANDIDATE_LIMIT: "settings.rec.candidate_limit",
       REC_TAG_FLOOR_SCORE: "settings.rec.tag_floor",
@@ -394,6 +415,9 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!config.value.DATA_UI_THEME_CUSTOM_ACCENT) config.value.DATA_UI_THEME_CUSTOM_ACCENT = "#f59e0b";
     if (config.value.REC_TEMPERATURE === undefined || config.value.REC_TEMPERATURE === null || config.value.REC_TEMPERATURE === "") {
       config.value.REC_TEMPERATURE = 0.3;
+    }
+    if (config.value.REC_PROFILE_WEIGHT === undefined || config.value.REC_PROFILE_WEIGHT === null || config.value.REC_PROFILE_WEIGHT === "") {
+      config.value.REC_PROFILE_WEIGHT = 0.18;
     }
     if (config.value.REC_TOUCH_PENALTY_PCT === undefined || config.value.REC_TOUCH_PENALTY_PCT === null || config.value.REC_TOUCH_PENALTY_PCT === "") {
       config.value.REC_TOUCH_PENALTY_PCT = 35;
@@ -695,6 +719,10 @@ export const useSettingsStore = defineStore("settings", () => {
     const v = Number(config.value.REC_TEMPERATURE ?? 0.3);
     config.value.REC_TEMPERATURE = Number((Number.isFinite(v) ? Math.max(0.05, Math.min(2.0, v)) : 0.3).toFixed(2));
   });
+  watch(() => config.value.REC_PROFILE_WEIGHT, () => {
+    const v = Number(config.value.REC_PROFILE_WEIGHT ?? 0.18);
+    config.value.REC_PROFILE_WEIGHT = Number((Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.18).toFixed(4));
+  });
   watch(() => config.value.REC_TOUCH_PENALTY_PCT, () => {
     const v = Number(config.value.REC_TOUCH_PENALTY_PCT ?? 35);
     config.value.REC_TOUCH_PENALTY_PCT = Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : 35;
@@ -707,6 +735,10 @@ export const useSettingsStore = defineStore("settings", () => {
   watch(() => config.value.DATA_UI_DEVELOPER_MODE, (enabled) => {
     if (!enabled && settingsTab.value === "developer") settingsTab.value = "other";
     loadDevSchemaData().catch(() => null);
+  });
+
+  watch(() => newEhTag.value, () => {
+    loadEhTagSuggestions().catch(() => null);
   });
 
   return {
@@ -732,6 +764,7 @@ export const useSettingsStore = defineStore("settings", () => {
     cookieParts,
     ehFilterTags,
     newEhTag,
+    ehTagSuggestions,
     ehCategoryDefs,
     ehCategoryAllowMap,
     themeOptions,
@@ -754,6 +787,7 @@ export const useSettingsStore = defineStore("settings", () => {
     categoryStyle,
     addEhTag,
     removeEhTag,
+    loadEhTagSuggestions,
     normalizeSearchWeights,
     normalizeAgentChannelWeights,
     normalizeRecommendWeights,
