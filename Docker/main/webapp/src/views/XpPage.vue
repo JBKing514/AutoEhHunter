@@ -30,7 +30,20 @@
           </v-card>
 
           <v-card class="pa-4 mb-4">
-            <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('xp.chart_title') }}</div>
+            <div class="d-flex align-center justify-space-between mb-3">
+              <div class="text-subtitle-1 font-weight-medium">{{ t('xp.chart_title') }}</div>
+              <v-btn-toggle
+                v-model="xpChartMode"
+                density="compact"
+                variant="outlined"
+                color="primary"
+                mandatory
+                @update:model-value="toggleXpChartMode"
+              >
+                <v-btn value="3d" size="small">3D</v-btn>
+                <v-btn value="2d" size="small">2D</v-btn>
+              </v-btn-toggle>
+            </div>
             <div ref="xpChartEl" style="width: 100%; height: 520px" />
           </v-card>
 

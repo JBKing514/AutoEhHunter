@@ -8,9 +8,11 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+import numpy as np
 from plotly import figure_factory as ff
 from plotly.utils import PlotlyJSONEncoder
 from scipy.cluster import hierarchy as sch
+from scipy.stats import gaussian_kde
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -227,10 +229,43 @@ def _compute_xp_map(
     except Exception as e:
         dendrogram = {"available": False, "reason": f"dendrogram_error: {e}", "figure": None}
 
+    # --- MAP Potential Surface (3D) ---
+    # Compute Gaussian KDE over the 2D PCA coords, then derive the potential
+    # U(x,y) = -log(p(x,y) + epsilon) for the MAP L4 interface visualization.
+    potential_surface: dict[str, Any] = {"available": False, "reason": "too_few_points"}
+    try:
+        if len(coords) >= 6:
+            xy = coords.T  # shape (2, N)
+            kde = gaussian_kde(xy, bw_method=0.35)
+            grid_res = 50
+            x_min, x_max = float(coords[:, 0].min()), float(coords[:, 0].max())
+            y_min, y_max = float(coords[:, 1].min()), float(coords[:, 1].max())
+            # Add a small margin so the surface extends slightly beyond the point cloud
+            x_pad = max((x_max - x_min) * 0.15, 0.1)
+            y_pad = max((y_max - y_min) * 0.15, 0.1)
+            x_grid = np.linspace(x_min - x_pad, x_max + x_pad, grid_res)
+            y_grid = np.linspace(y_min - y_pad, y_max + y_pad, grid_res)
+            XX, YY = np.meshgrid(x_grid, y_grid)
+            Z_density = kde(np.vstack([XX.ravel(), YY.ravel()])).reshape(XX.shape)
+            epsilon = 1e-9
+            U = -np.log(Z_density + epsilon)
+            # Shift so the global minimum is 0 (makes the surface easier to read)
+            U = U - float(U.min())
+            potential_surface = {
+                "available": True,
+                "reason": "",
+                "x_grid": x_grid.tolist(),
+                "y_grid": y_grid.tolist(),
+                "u_matrix": U.tolist(),  # shape (grid_res, grid_res), row=y col=x
+            }
+    except Exception as e:
+        potential_surface = {"available": False, "reason": f"kde_error: {e}"}
+
     return {
         "points": points,
         "clusters": clusters,
         "dendrogram": dendrogram,
+        "potential_surface": potential_surface,
         "meta": {
             "n_points": len(points),
             "k": k_use,
@@ -400,15 +435,18 @@ def _build_recommendation_items(
     jitter: bool = False,
     jitter_nonce: str = "",
 ) -> dict[str, Any]:
-    strictness = float(cfg.get("REC_STRICTNESS", 0.55))
-    strictness = max(0.0, min(1.0, strictness))
+    # REC_TEMPERATURE: base temperature T, configurable by user (default 0.3)
+    # mode offsets: explore +0.5, precise -0.2
+    T_base = max(0.05, min(2.0, float(cfg.get("REC_TEMPERATURE", 0.3))))
     mode_s = str(mode or "").strip().lower()
     explore = mode_s == "explore"
     precise = mode_s == "precise"
     if explore:
-        strictness = max(0.0, min(1.0, strictness - 0.20))
-    if precise:
-        strictness = max(0.0, min(1.0, strictness + 0.20))
+        T = min(2.0, T_base + 0.5)
+    elif precise:
+        T = max(0.05, T_base - 0.2)
+    else:
+        T = T_base
 
     rec_hours_base = max(1, min(24 * 30, int(cfg.get("REC_CANDIDATE_HOURS", 24))))
     rec_limit_base = max(50, min(2000, int(cfg.get("REC_CANDIDATE_LIMIT", 400))))
@@ -462,8 +500,11 @@ def _build_recommendation_items(
     if jitter_enabled and len(profile_vec) == 1024 and jitter_rng is not None:
         profile_vec = _with_gaussian_jitter(profile_vec, jitter_sigma, jitter_rng)
 
-    min_tag = 0.04 + 0.36 * strictness
-    min_visual = 0.15 + 0.55 * strictness
+    # Energy cutoff: derived from temperature so that hotter runs let in more items.
+    # T→low (precise): tighter cutoff (e.g. T=0.1 → U_max≈0.57); T→high (explore): looser (e.g. T=0.8 → U_max≈0.86)
+    # Formula: U_max = 1 - 0.55*(1-T/2.0), clamped to [0.4, 1.0]
+    U_max = max(0.4, min(1.0, 1.0 - 0.55 * (1.0 - T / 2.0)))
+
     scored: list[dict[str, Any]] = []
     skipped_in_library = 0
     skipped_touch = 0
@@ -478,7 +519,15 @@ def _build_recommendation_items(
 
         tags = [str(x) for x in (c.get("tags") or []) if str(x).strip()]
         tscore = float(sum(float(tag_scores.get(t, floor)) for t in tags) / len(tags)) if tags else float(floor)
+
+        # --- MAP Potential energies (both normalised to [0,1]) ---
+        # U_tag: distance from perfect tag match.  tscore=1 → U=0 (attractor well), tscore=0 → U=1 (repelled)
+        U_tag = 1.0 - tscore
+
+        # U_vis: 1 - 1/(1+d) keeps U_vis ∈ [0,1) with the same topology as 1/(1+d) but inverted.
+        # This ensures U_tag and U_vis live in the same unit interval so their weighted sum is meaningful.
         vscore = 0.45
+        U_vis = 1.0 - vscore  # default when no visual embedding available
         min_dist = None
         vec = _parse_vector_text(str(c.get("cover_vec") or ""))
         if centroids and vec:
@@ -486,11 +535,7 @@ def _build_recommendation_items(
             if dists:
                 min_dist = min(dists)
                 vscore = 1.0 / (1.0 + float(min_dist))
-        if (not explore) and tscore < min_tag and vscore < min_visual:
-            continue
-        novelty_bonus = (1.0 - tscore) * 0.12 if explore else 0.0
-        precision_bonus = ((tscore + vscore) * 0.5) * (0.08 * strictness)
-        final = tag_weight * tscore + visual_weight * vscore + novelty_bonus + precision_bonus
+                U_vis = 1.0 - vscore  # ∈ [0,1): d→0 gives U_vis→0, d→∞ gives U_vis→1
 
         rec_key = recommendation_key(gid, token)
         touch_n = int(touch_counts.get(rec_key, 0)) if rec_key else 0
@@ -512,14 +557,39 @@ def _build_recommendation_items(
                 continue
         if impression_n > 0 and impression_penalty > 0:
             impression_factor = max(0.0, (1.0 - impression_penalty) ** impression_n)
+        # --- U_profile: third potential field from long-term user profile vector ---
+        # Cosine similarity ∈ [-1,1] → mapped to [0,1] → inverted to energy U_profile ∈ [0,1]
+        # This keeps all three potentials dimensionally consistent before the Boltzmann integral.
         profile_score = 0.0
+        U_profile = 0.5  # neutral default when no profile vector available (U=0.5 ≈ unknown)
         if len(profile_vec) == 1024 and vec:
             sim = _cosine(profile_vec, _project_1024(vec))
             profile_score = max(0.0, min(1.0, (float(sim) + 1.0) * 0.5))
-        final = float(final) * float(touch_factor) * float(impression_factor)
-        final = final + profile_weight * profile_score
+            U_profile = 1.0 - profile_score  # ∈ [0,1]: high similarity → low energy
+
+        # --- MAP additive potential (three independent fields, cond. independence) ---
+        # U_total = w_tag·U_tag + w_vis·U_vis + w_profile·U_profile
+        # All weights are re-normalised so the triple sum is still in [0,1].
+        triple_w = tag_weight + visual_weight + profile_weight
+        U_total = (tag_weight * U_tag + visual_weight * U_vis + profile_weight * U_profile) / triple_w
+
+        # Re-apply energy cutoff after incorporating profile potential.
+        if U_total > U_max:
+            continue
+
+        # --- MAP Boltzmann base probability ---
+        # P(x) ∝ exp(-U_total / T)   — one Boltzmann mapping, no external linear terms.
+        # High T → flat landscape (exploration); Low T → sharp well (precision)
+        base_prob = math.exp(-U_total / T)
+
+        # Interaction decay factors (touch/impression penalties) multiply the probability —
+        # these are analogous to absorption cross-sections in a scattering model.
+        final = base_prob * float(touch_factor) * float(impression_factor)
+
+        # Thermal jitter: equivalent to Langevin noise term sqrt(2T)dW_t at sampling time.
+        # max(0.0, ...) enforces the physical constraint that probability must be non-negative.
         if jitter_enabled and jitter_rng is not None:
-            final = final + float(jitter_rng.gauss(0.0, 0.022))
+            final = max(0.0, final + float(jitter_rng.gauss(0.0, 0.022)))
 
         scored.append(
             {
@@ -528,6 +598,11 @@ def _build_recommendation_items(
                 "signals": {
                     "tag_score": float(tscore),
                     "visual_score": float(vscore),
+                    "u_tag": float(U_tag),
+                    "u_vis": float(U_vis),
+                    "u_total": float(U_total),
+                    "temperature": float(T),
+                    "base_prob": float(base_prob),
                     "min_cluster_distance": min_dist,
                     "touch_count": touch_n,
                     "touch_factor": float(touch_factor),
@@ -549,7 +624,9 @@ def _build_recommendation_items(
             "candidate_hours_base": rec_hours_base,
             "candidate_limit": rec_limit,
             "candidate_limit_base": rec_limit_base,
-            "strictness": strictness,
+            "temperature": float(T),
+            "temperature_base": float(T_base),
+            "u_max": float(U_max),
             "mode": mode_s or "default",
             "depth": depth_use,
             "dynamic_expand_enabled": dynamic_expand,
@@ -592,7 +669,7 @@ def _get_recommendation_items_cached(
             str(cfg.get("REC_CLUSTER_K")),
             str(cfg.get("REC_TAG_WEIGHT")),
             str(cfg.get("REC_VISUAL_WEIGHT")),
-            str(cfg.get("REC_STRICTNESS")),
+            str(cfg.get("REC_TEMPERATURE")),
             str(cfg.get("REC_CANDIDATE_LIMIT")),
             str(cfg.get("REC_TAG_FLOOR_SCORE")),
             str(cfg.get("REC_TOUCH_PENALTY_PCT")),

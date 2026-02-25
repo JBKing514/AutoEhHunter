@@ -173,7 +173,7 @@ export const useSettingsStore = defineStore("settings", () => {
       REC_TAG_WEIGHT: "settings.rec.tag_weight",
       REC_VISUAL_WEIGHT: "settings.rec.visual_weight",
       REC_FEEDBACK_WEIGHT: "settings.rec.feedback_weight",
-      REC_STRICTNESS: "settings.rec.strictness",
+      REC_TEMPERATURE: "settings.rec.temperature",
       REC_CANDIDATE_LIMIT: "settings.rec.candidate_limit",
       REC_TAG_FLOOR_SCORE: "settings.rec.tag_floor",
       REC_TOUCH_PENALTY_PCT: "settings.rec.touch_penalty_pct",
@@ -362,7 +362,7 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   function resetRecommendPreset() {
-    config.value.REC_STRICTNESS = 0.55;
+    config.value.REC_TEMPERATURE = 0.3;
     config.value.REC_TAG_WEIGHT = 0.55;
     config.value.REC_VISUAL_WEIGHT = 0.45;
     config.value.REC_FEEDBACK_WEIGHT = 0.0;
@@ -392,6 +392,9 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!config.value.DATA_UI_THEME_CUSTOM_PRIMARY) config.value.DATA_UI_THEME_CUSTOM_PRIMARY = "#2563eb";
     if (!config.value.DATA_UI_THEME_CUSTOM_SECONDARY) config.value.DATA_UI_THEME_CUSTOM_SECONDARY = "#0ea5e9";
     if (!config.value.DATA_UI_THEME_CUSTOM_ACCENT) config.value.DATA_UI_THEME_CUSTOM_ACCENT = "#f59e0b";
+    if (config.value.REC_TEMPERATURE === undefined || config.value.REC_TEMPERATURE === null || config.value.REC_TEMPERATURE === "") {
+      config.value.REC_TEMPERATURE = 0.3;
+    }
     if (config.value.REC_TOUCH_PENALTY_PCT === undefined || config.value.REC_TOUCH_PENALTY_PCT === null || config.value.REC_TOUCH_PENALTY_PCT === "") {
       config.value.REC_TOUCH_PENALTY_PCT = 35;
     }
@@ -688,9 +691,9 @@ export const useSettingsStore = defineStore("settings", () => {
   watch(() => config.value.REC_TAG_WEIGHT, () => normalizeRecommendWeights("REC_TAG_WEIGHT"));
   watch(() => config.value.REC_VISUAL_WEIGHT, () => normalizeRecommendWeights("REC_VISUAL_WEIGHT"));
   watch(() => config.value.REC_FEEDBACK_WEIGHT, () => normalizeRecommendWeights("REC_FEEDBACK_WEIGHT"));
-  watch(() => config.value.REC_STRICTNESS, () => {
-    const v = Number(config.value.REC_STRICTNESS ?? 0.55);
-    config.value.REC_STRICTNESS = Number((Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.55).toFixed(4));
+  watch(() => config.value.REC_TEMPERATURE, () => {
+    const v = Number(config.value.REC_TEMPERATURE ?? 0.3);
+    config.value.REC_TEMPERATURE = Number((Number.isFinite(v) ? Math.max(0.05, Math.min(2.0, v)) : 0.3).toFixed(2));
   });
   watch(() => config.value.REC_TOUCH_PENALTY_PCT, () => {
     const v = Number(config.value.REC_TOUCH_PENALTY_PCT ?? 35);

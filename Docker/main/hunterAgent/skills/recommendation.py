@@ -161,7 +161,7 @@ def _build_profile(settings: Settings, profile_days: int) -> _RecProfileCache:
         step = max(1, len(points) // 320)
         points = points[::step]
 
-    centroids = _kmeans(points, k=max(1, int(settings.rec_cluster_k)), iters=8)
+    centroids = _kmeans(points, k=max(1, int(settings.rec_cluster_k)))
     return _RecProfileCache(
         built_at=time.time(),
         days=int(profile_days),
@@ -268,7 +268,7 @@ def run_recommendation(*, settings: Settings, llm: OpenAICompatClient, payload: 
     candidate_limit = max(50, min(2000, int(payload.get("candidate_limit") or settings.rec_candidate_limit)))
 
     tag_weight = float(payload.get("tag_weight") or settings.rec_tag_weight)
-    visual_weight = float(payload.get("tag_weight") or settings.rec_visual_weight)
+    visual_weight = float(payload.get("visual_weight") or settings.rec_visual_weight)
     feedback_weight = float(payload.get("feedback_weight") or getattr(settings, "rec_feedback_weight", 0.0))
     if tag_weight < 0:
         tag_weight = 0.0
@@ -286,14 +286,21 @@ def run_recommendation(*, settings: Settings, llm: OpenAICompatClient, payload: 
     visual_weight /= wsum
     feedback_weight /= wsum
 
-    strictness = _clamp(float(payload.get("strictness") or settings.rec_strictness), 0.0, 1.0)
+    # --- MAP Boltzmann temperature mapping ---
+    # REC_TEMPERATURE: user-configurable base T; mode offsets applied on top.
+    T_base = _clamp(float(payload.get("temperature") or getattr(settings, "rec_temperature", 0.3)), 0.05, 2.0)
     mode = str(payload.get("mode") or "").strip().lower()
     explore = _as_bool(payload.get("explore")) or mode == "explore"
     precise = _as_bool(payload.get("precise")) or mode == "precise"
     if explore:
-        strictness = _clamp(strictness - 0.20, 0.0, 1.0)
-    if precise:
-        strictness = _clamp(strictness + 0.20, 0.0, 1.0)
+        T = min(2.0, T_base + 0.5)
+    elif precise:
+        T = max(0.05, T_base - 0.2)
+    else:
+        T = T_base
+
+    # Energy cutoff derived from temperature (hotter → looser cutoff).
+    U_max = max(0.4, min(1.0, 1.0 - 0.55 * (1.0 - T / 2.0)))
 
     profile = _get_profile_cached(settings, profile_days)
     base_vector = _get_user_base_vector(settings, user_id) if feedback_weight > 0 else []
@@ -302,8 +309,6 @@ def run_recommendation(*, settings: Settings, llm: OpenAICompatClient, payload: 
     candidates = get_eh_candidates_by_period(settings, start, now, limit=candidate_limit)
 
     floor = _clamp(float(payload.get("tag_floor_score") or settings.rec_tag_floor_score), 0.0, 0.4)
-    min_tag = 0.04 + 0.36 * strictness
-    min_visual = 0.15 + 0.55 * strictness
 
     scored: List[Dict[str, Any]] = []
     for c in candidates:
@@ -319,16 +324,29 @@ def run_recommendation(*, settings: Settings, llm: OpenAICompatClient, payload: 
                 min_dist = min(dists)
                 vscore = 1.0 / (1.0 + float(min_dist))
 
+        # --- MAP Potential energies (normalised to [0,1]) ---
+        U_tag = 1.0 - tscore
+        U_vis = 1.0 - vscore
+
+        # --- U_profile: feedback vector as third potential field ---
         fscore = 0.0
+        U_profile = 0.5  # neutral default
         if base_vector and isinstance(vec, list) and vec and feedback_weight > 0:
             fscore = _cosine_similarity(vec, base_vector)
+            U_profile = 1.0 - max(0.0, min(1.0, (fscore + 1.0) * 0.5))
 
-        if (not explore) and tscore < min_tag and vscore < min_visual:
+        # --- MAP additive potential (three independent fields) ---
+        triple_w = tag_weight + visual_weight + feedback_weight
+        if triple_w <= 0:
+            triple_w = 1.0
+        U_total = (tag_weight * U_tag + visual_weight * U_vis + feedback_weight * U_profile) / triple_w
+
+        # Energy cutoff: too far from attractor → skip
+        if U_total > U_max:
             continue
 
-        novelty_bonus = (1.0 - tscore) * 0.12 if explore else 0.0
-        precision_bonus = ((tscore + vscore) * 0.5) * (0.08 * strictness)
-        final = tag_weight * tscore + visual_weight * vscore + feedback_weight * fscore + novelty_bonus + precision_bonus
+        # --- MAP Boltzmann base probability: one mapping, no external linear terms ---
+        final = math.exp(-U_total / T)
 
         scored.append(
             {

@@ -17,7 +17,7 @@
 
       <v-col cols="12"><v-divider class="my-2" /></v-col>
 
-      <v-col cols="12" md="4"><v-slider v-model="config.REC_STRICTNESS" min="0" max="1" step="0.01" :label="t('settings.rec.strictness')" color="primary" density="compact" hide-details thumb-label /></v-col>
+      <v-col cols="12" md="4"><v-slider v-model="config.REC_TEMPERATURE" min="0.05" max="2" step="0.05" :label="t('settings.rec.temperature')" color="primary" density="compact" hide-details thumb-label /></v-col>
       <v-col cols="12" md="4"><v-slider v-model="config.REC_TAG_WEIGHT" min="0" max="1" step="0.01" :label="t('settings.rec.tag_weight')" color="primary" density="compact" hide-details thumb-label /></v-col>
       <v-col cols="12" md="4"><v-slider v-model="config.REC_VISUAL_WEIGHT" min="0" max="1" step="0.01" :label="t('settings.rec.visual_weight')" color="primary" density="compact" hide-details thumb-label /></v-col>
       <v-col cols="12" md="4"><v-slider v-model="config.REC_FEEDBACK_WEIGHT" min="0" max="1" step="0.01" :label="t('settings.rec.feedback_weight')" color="primary" density="compact" hide-details thumb-label /></v-col>

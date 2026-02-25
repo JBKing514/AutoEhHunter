@@ -6,6 +6,9 @@ export const useXpStore = defineStore("xp", () => {
   const xpChartEl = ref(null);
   const dendroChartEl = ref(null);
 
+  // 2D/3D toggle state — default to 3D (MAP potential surface)
+  const xpChartMode = ref("3d");
+
   const xp = ref({
     mode: "read_history",
     time_basis: "read_time",
@@ -82,6 +85,94 @@ export const useXpStore = defineStore("xp", () => {
     );
   }
 
+  async function renderXpChart3D() {
+    if (!xpChartEl.value) return;
+    const Plotly = await ensurePlotly();
+    const points = xpResult.value.points || [];
+    const ps = xpResult.value.potential_surface;
+    const traces = [];
+
+    // --- Potential surface trace (MAP L4 interface) ---
+    if (ps && ps.available) {
+      traces.push({
+        type: "surface",
+        x: ps.x_grid,
+        y: ps.y_grid,
+        z: ps.u_matrix,
+        colorscale: "Viridis",
+        reversescale: true, // low U (attractor wells) = bright, high U (barriers) = dark
+        opacity: 0.72,
+        showscale: true,
+        colorbar: { title: "U(x,y)", thickness: 14, len: 0.6 },
+        hovertemplate: "x: %{x:.2f}<br>y: %{y:.2f}<br>U: %{z:.3f}<extra>Potential</extra>",
+        contours: {
+          z: { show: true, usecolormap: true, highlightcolor: "#42f462", project: { z: false } },
+        },
+      });
+    }
+
+    // --- Scatter points per cluster, lifted to z=0 so they float above the surface ---
+    const byCluster = new Map();
+    points.forEach((p) => {
+      const key = p.cluster || "cluster";
+      if (!byCluster.has(key)) byCluster.set(key, []);
+      byCluster.get(key).push(p);
+    });
+    byCluster.forEach((arr, name) => {
+      traces.push({
+        type: "scatter3d",
+        mode: "markers",
+        name,
+        x: arr.map((p) => p.x),
+        y: arr.map((p) => p.y),
+        // Place scatter points slightly above the surface minimum for visibility
+        z: arr.map(() => 0),
+        text: arr.map((p) => `${p.title}<br>${p.arcid}`),
+        hovertemplate: "%{text}<extra></extra>",
+        marker: { size: 4, opacity: 0.9 },
+      });
+    });
+
+    const metaX = xpResult.value.meta?.x_axis_title || "PC1";
+    const metaY = xpResult.value.meta?.y_axis_title || "PC2";
+    await Plotly.react(
+      xpChartEl.value,
+      traces,
+      {
+        margin: { l: 0, r: 0, t: 30, b: 0 },
+        paper_bgcolor: "#ffffff",
+        scene: {
+          xaxis: { title: metaX.split(" ")[0] },
+          yaxis: { title: metaY.split(" ")[0] },
+          zaxis: { title: "U(x,y)" },
+          camera: { eye: { x: 1.5, y: 1.5, z: 1.2 } },
+        },
+        legend: { orientation: "v", x: 1.02, y: 1, xanchor: "left", yanchor: "top" },
+        title: {
+          text: "MAP Potential Landscape",
+          font: { size: 13, color: "#555" },
+          x: 0.5,
+        },
+      },
+      { displayModeBar: false, responsive: true },
+    );
+  }
+
+  async function renderActiveXpChart() {
+    if (xpChartMode.value === "3d") {
+      await renderXpChart3D();
+    } else {
+      await renderXpChart();
+    }
+  }
+
+  async function toggleXpChartMode() {
+    // xpChartMode is already updated by v-model before this is called,
+    // so we just re-render in whichever mode is now active.
+    await nextTick();
+    await renderActiveXpChart();
+  }
+
   async function renderDendrogram() {
     if (!dendroChartEl.value || !xpResult.value.dendrogram?.available) return;
     const Plotly = await ensurePlotly();
@@ -100,7 +191,7 @@ export const useXpStore = defineStore("xp", () => {
     };
     xpResult.value = await getXpMap(params);
     await nextTick();
-    await renderXpChart();
+    await renderActiveXpChart();
     await renderDendrogram();
   }
 
@@ -180,6 +271,7 @@ export const useXpStore = defineStore("xp", () => {
     dendroChartEl,
     xp,
     xpTimeMode,
+    xpChartMode,
     xpResult,
     xpExcludeTags,
     newXpExcludeTag,
@@ -187,6 +279,9 @@ export const useXpStore = defineStore("xp", () => {
     t,
     ensurePlotly,
     renderXpChart,
+    renderXpChart3D,
+    renderActiveXpChart,
+    toggleXpChartMode,
     renderDendrogram,
     loadXp,
     addXpExcludeTag,
