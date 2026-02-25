@@ -44,6 +44,7 @@ Docker/local-files/
 build/
 dist/
 astrbot-dashboard/
+Suwayomi-Server-master/
 
 # --- Companion Android/Kotlin build outputs ---
 Companion/**/build/

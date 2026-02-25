@@ -69,10 +69,80 @@ def _pick_candidates(conn: psycopg.Connection, include_fail: bool, limit: int) -
 
 
 def _fetch_cover_bytes(session: requests.Session, thumb_url: str, referer: str, timeout_s: int) -> bytes:
-    headers = {"Referer": str(referer or "")} if referer else {}
-    resp = session.get(str(thumb_url), headers=headers, timeout=max(5, int(timeout_s)))
-    resp.raise_for_status()
-    return resp.content
+    base = str(thumb_url or "").strip()
+    if not base:
+        raise RuntimeError("thumb missing")
+
+    candidates = [
+        base,
+        base.replace("https://ehgt.org/", "https://s.exhentai.org/"),
+        base.replace("https://s.exhentai.org/", "https://ehgt.org/"),
+    ]
+    dedup: list[str] = []
+    seen: set[str] = set()
+    for u in candidates:
+        if u and u not in seen:
+            seen.add(u)
+            dedup.append(u)
+
+    last_err: Exception | None = None
+    for attempt in range(3):
+        for u in dedup:
+            try:
+                headers = {"Referer": str(referer or "")} if referer else {}
+                resp = session.get(u, headers=headers, timeout=max(5, int(timeout_s)))
+                resp.raise_for_status()
+                return resp.content
+            except Exception as e:
+                last_err = e
+                continue
+        if attempt < 2:
+            time.sleep(1.0 * (attempt + 1))
+    raise RuntimeError(f"cover fetch failed after retries: {last_err}")
+
+
+def _refresh_thumb_from_api(
+    conn: psycopg.Connection,
+    session: requests.Session,
+    gid: int,
+    token: str,
+    timeout_s: int,
+) -> tuple[str, str, str]:
+    safe_token = str(token or "").strip()
+    if gid <= 0 or not safe_token:
+        return "", "", ""
+    payload = {"method": "gdata", "gidlist": [[int(gid), safe_token]], "namespace": 1}
+    try:
+        r = session.post("https://api.e-hentai.org/api.php", json=payload, timeout=max(10, int(timeout_s)))
+        r.raise_for_status()
+        obj = r.json()
+    except Exception:
+        return "", "", ""
+    rows = obj.get("gmetadata") if isinstance(obj, dict) else None
+    if not isinstance(rows, list) or not rows:
+        return "", "", ""
+    row = rows[0] if isinstance(rows[0], dict) else None
+    if not isinstance(row, dict):
+        return "", "", ""
+    new_thumb = str(row.get("thumb") or "").strip()
+    if not new_thumb:
+        return "", "", ""
+
+    eh_url = f"https://e-hentai.org/g/{int(gid)}/{safe_token}/"
+    ex_url = f"https://exhentai.org/g/{int(gid)}/{safe_token}/"
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE eh_works "
+            "SET raw = COALESCE(raw, '{}'::jsonb) || %s::jsonb, "
+            "eh_url = %s, ex_url = %s, last_fetched_at = now(), updated_at = now() "
+            "WHERE gid = %s AND token = %s "
+            "RETURNING raw->>'thumb', eh_url, ex_url",
+            (json.dumps(row, ensure_ascii=False), eh_url, ex_url, int(gid), safe_token),
+        )
+        got = cur.fetchone()
+    if got:
+        return str(got[0] or new_thumb), str(got[1] or eh_url), str(got[2] or ex_url)
+    return new_thumb, eh_url, ex_url
 
 
 def _mark_success(conn: psycopg.Connection, gid: int, token: str, vec: list[float]) -> None:
@@ -135,10 +205,21 @@ def run_eh_cover_embedding_once(*, include_fail: bool = False, limit: int = 12) 
             referer = str(item.get("eh_url") or item.get("ex_url") or "").strip()
             try:
                 if not thumb:
-                    raise RuntimeError("thumb missing")
+                    thumb, eh_ref, ex_ref = _refresh_thumb_from_api(conn, session, gid, token, timeout_s=timeout_s)
+                    referer = str(eh_ref or ex_ref or referer).strip()
+                    if not thumb:
+                        raise RuntimeError("thumb missing")
                 if sleep_s > 0:
                     time.sleep(sleep_s)
-                img = _fetch_cover_bytes(session, thumb, referer, timeout_s=timeout_s)
+                try:
+                    img = _fetch_cover_bytes(session, thumb, referer, timeout_s=timeout_s)
+                except Exception:
+                    refreshed_thumb, eh_ref, ex_ref = _refresh_thumb_from_api(conn, session, gid, token, timeout_s=timeout_s)
+                    if not refreshed_thumb or refreshed_thumb == thumb:
+                        raise
+                    thumb = refreshed_thumb
+                    referer = str(eh_ref or ex_ref or referer).strip()
+                    img = _fetch_cover_bytes(session, thumb, referer, timeout_s=timeout_s)
                 vec = _embed_image_siglip(img, model_id)
                 if not vec:
                     raise RuntimeError("embedding empty")

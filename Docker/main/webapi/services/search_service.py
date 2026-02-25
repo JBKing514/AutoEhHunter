@@ -1,4 +1,5 @@
 import hashlib
+import os
 import re
 import threading
 import time
@@ -37,9 +38,15 @@ def _cache_write(key: str, data: bytes) -> None:
         return
     ensure_dirs()
     p = _thumb_cache_file(key)
+    tmp = p.with_suffix(f".{time.time_ns()}.tmp")
     try:
-        p.write_bytes(data)
+        tmp.write_bytes(data)
+        os.replace(tmp, p)
     except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
         return
 
 

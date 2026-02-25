@@ -141,7 +141,7 @@
               <template #prepend>
                 <div class="list-cover" @contextmenu.prevent>
                   <div v-if="item.thumb_url" class="cover-bg-blur list-blur" :style="{ backgroundImage: `url(${item.thumb_url})` }" />
-                  <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="cover-img list-cover-img" loading="lazy" draggable="false" @dragstart.prevent />
+                  <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="cover-img list-cover-img" loading="lazy" draggable="false" @dragstart.prevent @error="onImageError(item)" />
                   <v-icon v-else size="18">mdi-image-outline</v-icon>
                 </div>
               </template>
@@ -174,7 +174,7 @@
                     <div class="cover-anchor">
                       <div class="cover-ph" :class="{ disliked: isRecommendDisliked(item) }">
                         <div v-if="item.thumb_url" class="cover-bg-blur" :style="{ backgroundImage: `url(${item.thumb_url})` }" />
-                        <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="cover-img" loading="lazy" draggable="false" @dragstart.prevent />
+                        <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="cover-img" loading="lazy" draggable="false" @dragstart.prevent @error="onImageError(item)" />
                         <v-icon v-else size="30">mdi-image-outline</v-icon>
                         <div class="cover-guard" @contextmenu.prevent />
                         <div v-if="isRecommendDisliked(item)" class="dislike-mask"><v-icon size="40">mdi-thumb-down</v-icon></div>
@@ -190,7 +190,7 @@
                 </template>
                 <v-card class="pa-2 hover-preview-card" variant="flat">
                   <div class="hover-cover-wrap mb-2" @contextmenu.prevent>
-                    <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="hover-cover" draggable="false" @dragstart.prevent />
+                    <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="hover-cover" draggable="false" @dragstart.prevent @error="onImageError(item)" />
                     <div v-else class="hover-cover hover-fallback"><v-icon size="42">mdi-image-outline</v-icon></div>
                     <div class="hover-dislike-banner">
                       <v-btn size="small" color="warning" variant="flat" prepend-icon="mdi-thumb-down-outline" @click.stop="markRecommendDislike(item)">{{ t('home.recommend.dislike_action') }}</v-btn>
@@ -224,7 +224,7 @@
                 <v-btn size="x-small" icon="mdi-close-circle" color="error" variant="tonal" @click="mobilePreviewItem = null" />
               </div>
               <div class="hover-cover-wrap mb-2" @contextmenu.prevent>
-                <img v-if="mobilePreviewItem.thumb_url" :src="mobilePreviewItem.thumb_url" alt="cover" class="hover-cover" draggable="false" @dragstart.prevent />
+                <img v-if="mobilePreviewItem.thumb_url" :src="mobilePreviewItem.thumb_url" alt="cover" class="hover-cover" draggable="false" @dragstart.prevent @error="onImageError(mobilePreviewItem)" />
                 <div v-else class="hover-cover hover-fallback"><v-icon size="42">mdi-image-outline</v-icon></div>
                 <div class="hover-dislike-banner">
                   <v-btn size="small" color="warning" variant="flat" prepend-icon="mdi-thumb-down-outline" @click="markRecommendDislike(mobilePreviewItem)">{{ t('home.recommend.dislike_action') }}</v-btn>
@@ -389,6 +389,36 @@ export default {
       if (typeof this.loadTagSuggestions === "function") {
         this.loadTagSuggestions().catch(() => null);
       }
+    },
+  },
+  methods: {
+    onImageError(item) {
+      if (!item || !item.thumb_url || item._is_retrying) return;
+      if (item._retries === undefined) item._retries = 0;
+      if (item._retries >= 3) return;
+
+      item._retries += 1;
+      item._is_retrying = true;
+
+      const retryDelayMs = 1500 * item._retries;
+      const originalUrl = String(item.thumb_url || "");
+
+      setTimeout(() => {
+        const baseUrl = originalUrl.replace(/([?&])r=\d+/g, "").replace(/[?&]$/, "");
+        const separator = baseUrl.includes("?") ? "&" : "?";
+        const testUrl = `${baseUrl}${separator}r=${Date.now()}`;
+
+        const ghostImg = new Image();
+        ghostImg.onload = () => {
+          item.thumb_url = testUrl;
+          item._is_retrying = false;
+        };
+        ghostImg.onerror = () => {
+          item._is_retrying = false;
+          this.onImageError(item);
+        };
+        ghostImg.src = testUrl;
+      }, retryDelayMs);
     },
   },
 };

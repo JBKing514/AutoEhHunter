@@ -1,6 +1,9 @@
+import asyncio
+import json
+import threading
 from typing import Any
 
-import requests
+import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 
 from ..core.config_values import as_bool as _as_bool
@@ -26,8 +29,143 @@ from ..services.search_service import (
 router = APIRouter(tags=["search"])
 
 
+_thumb_client_lock = threading.Lock()
+_thumb_client: httpx.AsyncClient | None = None
+
+
+def _get_thumb_http_client() -> httpx.AsyncClient:
+    global _thumb_client
+    with _thumb_client_lock:
+        if _thumb_client is None:
+            _thumb_client = httpx.AsyncClient(
+                verify=False,
+                follow_redirects=True,
+                limits=httpx.Limits(max_connections=80, max_keepalive_connections=20, keepalive_expiry=30.0),
+                timeout=httpx.Timeout(connect=8.0, read=10.0, write=8.0, pool=5.0),
+            )
+        return _thumb_client
+
+
+async def _fetch_bytes_with_retries(
+    client: httpx.AsyncClient,
+    urls: list[str],
+    headers_factory,
+    *,
+    retries: int = 3,
+    timeout_s: float = 10.0,
+) -> tuple[bytes, str]:
+    last_err: Exception | None = None
+    uniq_urls: list[str] = []
+    seen: set[str] = set()
+    for u in urls:
+        s = str(u or "").strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        uniq_urls.append(s)
+    if not uniq_urls:
+        raise HTTPException(status_code=404, detail="thumb not found")
+
+    for attempt in range(max(1, int(retries))):
+        for url in uniq_urls:
+            try:
+                headers = headers_factory(url)
+                resp = await client.get(
+                    url,
+                    headers=headers,
+                    timeout=max(3.0, float(timeout_s)),
+                )
+                resp.raise_for_status()
+                return resp.content, str(resp.headers.get("content-type") or "image/jpeg")
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                last_err = e
+                continue
+        if attempt < max(1, int(retries)) - 1:
+            await asyncio.sleep(1.0 * (attempt + 1))
+
+    raise HTTPException(status_code=502, detail=f"thumbnail error after {retries} retries: {last_err}")
+
+
+def _build_eh_thumb_urls(thumb: str, prefer_ex: bool) -> list[str]:
+    base = str(thumb or "").strip()
+    if not base:
+        return []
+    eh_thumb = base.replace("https://s.exhentai.org/", "https://ehgt.org/")
+    ex_thumb = base.replace("https://ehgt.org/", "https://s.exhentai.org/")
+    candidates = [ex_thumb, eh_thumb] if prefer_ex else [eh_thumb, ex_thumb]
+    out: list[str] = []
+    seen: set[str] = set()
+    for u in candidates:
+        s = str(u or "").strip()
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def _eh_headers_for(url: str, ua: str, cookie: str) -> dict[str, str]:
+    h = {"User-Agent": ua}
+    is_ex = "s.exhentai.org" in str(url)
+    h["Referer"] = "https://exhentai.org/" if is_ex else "https://e-hentai.org/"
+    if is_ex and cookie:
+        h["Cookie"] = cookie
+    return h
+
+
+async def _refresh_eh_thumb_from_api(
+    *,
+    gid: int,
+    token: str,
+    cfg: dict[str, Any],
+    client: httpx.AsyncClient,
+) -> dict[str, str]:
+    safe_token = str(token or "").strip()
+    if gid <= 0 or not safe_token:
+        return {}
+    api_url = "https://api.e-hentai.org/api.php"
+    ua = str(cfg.get("EH_USER_AGENT") or "AutoEhHunter/1.0").strip() or "AutoEhHunter/1.0"
+    payload = {"method": "gdata", "gidlist": [[int(gid), safe_token]], "namespace": 1}
+    try:
+        resp = await client.post(api_url, json=payload, headers={"User-Agent": ua}, timeout=15.0)
+        resp.raise_for_status()
+        obj = resp.json()
+    except Exception:
+        return {}
+
+    rows = obj.get("gmetadata") if isinstance(obj, dict) else None
+    if not isinstance(rows, list) or not rows:
+        return {}
+    row = rows[0] if isinstance(rows[0], dict) else None
+    if not isinstance(row, dict):
+        return {}
+    new_thumb = str(row.get("thumb") or "").strip()
+    if not new_thumb:
+        return {}
+
+    eh_url = f"https://e-hentai.org/g/{int(gid)}/{safe_token}/"
+    ex_url = f"https://exhentai.org/g/{int(gid)}/{safe_token}/"
+    raw_patch = json.dumps(row, ensure_ascii=False)
+    updated = query_rows(
+        "UPDATE eh_works "
+        "SET raw = COALESCE(raw, '{}'::jsonb) || %s::jsonb, "
+        "eh_url = COALESCE(NULLIF(%s, ''), eh_url), "
+        "ex_url = COALESCE(NULLIF(%s, ''), ex_url), "
+        "last_fetched_at = now(), updated_at = now() "
+        "WHERE gid = %s AND token = %s "
+        "RETURNING raw->>'thumb' AS thumb, eh_url, ex_url",
+        (raw_patch, eh_url, ex_url, int(gid), safe_token),
+    )
+    if updated:
+        return {
+            "thumb": str((updated[0] or {}).get("thumb") or new_thumb).strip(),
+            "eh_url": str((updated[0] or {}).get("eh_url") or eh_url).strip(),
+            "ex_url": str((updated[0] or {}).get("ex_url") or ex_url).strip(),
+        }
+    return {"thumb": new_thumb, "eh_url": eh_url, "ex_url": ex_url}
+
+
 @router.get("/api/thumb/lrr/{arcid}")
-def thumb_lrr(arcid: str) -> Response:
+async def thumb_lrr(arcid: str) -> Response:
     cfg, _ = resolve_config()
     base = str(cfg.get("LRR_BASE") or "http://lanraragi:3000").strip().rstrip("/")
     api_key = str(cfg.get("LRR_API_KEY") or "").strip()
@@ -42,31 +180,29 @@ def thumb_lrr(arcid: str) -> Response:
     headers: dict[str, str] = {}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    try:
-        r = requests.get(url, headers=headers, timeout=30)
-        if r.status_code >= 400:
-            raise HTTPException(status_code=r.status_code, detail="failed to fetch lrr thumbnail")
-        ctype = r.headers.get("content-type", "image/jpeg")
-        _cache_write(cache_key, r.content)
-        return Response(content=r.content, media_type=ctype, headers={"X-Thumb-Cache": "MISS"})
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"lrr thumbnail error: {e}")
+    client = _get_thumb_http_client()
+    data, ctype = await _fetch_bytes_with_retries(
+        client,
+        [url],
+        headers_factory=lambda _u: headers,
+        retries=3,
+        timeout_s=10.0,
+    )
+    _cache_write(cache_key, data)
+    return Response(content=data, media_type=ctype, headers={"X-Thumb-Cache": "MISS"})
 
 
 @router.get("/api/thumb/eh/{gid}/{token}")
-def thumb_eh(gid: int, token: str) -> Response:
+async def thumb_eh(gid: int, token: str) -> Response:
     safe_token = str(token or "").strip()
     if gid <= 0 or not safe_token:
         raise HTTPException(status_code=400, detail="invalid gid/token")
     rows = query_rows(
-        "SELECT raw->>'thumb' AS thumb FROM eh_works WHERE gid = %s AND token = %s LIMIT 1",
+        "SELECT raw->>'thumb' AS thumb, eh_url, ex_url FROM eh_works WHERE gid = %s AND token = %s LIMIT 1",
         (int(gid), safe_token),
     )
-    thumb = str((rows[0] or {}).get("thumb") or "").strip() if rows else ""
-    if not thumb:
-        raise HTTPException(status_code=404, detail="thumb not found")
+    db_row = rows[0] if rows else {}
+    thumb = str((db_row or {}).get("thumb") or "").strip()
 
     cfg, _ = resolve_config()
     cache_key = f"eh:{gid}:{safe_token}:{'ex' if _prefer_ex(cfg) else 'eh'}"
@@ -75,23 +211,41 @@ def thumb_eh(gid: int, token: str) -> Response:
         return Response(content=cached, media_type="image/jpeg", headers={"X-Thumb-Cache": "HIT"})
     ua = str(cfg.get("EH_USER_AGENT") or "AutoEhHunter/1.0").strip() or "AutoEhHunter/1.0"
     cookie = str(cfg.get("EH_COOKIE") or "").strip()
-    headers = {"User-Agent": ua, "Referer": "https://e-hentai.org/"}
-    if _prefer_ex(cfg):
-        thumb = thumb.replace("https://ehgt.org/", "https://s.exhentai.org/")
-        headers["Referer"] = "https://exhentai.org/"
-        if cookie:
-            headers["Cookie"] = cookie
+    prefer_ex = _prefer_ex(cfg)
+    client = _get_thumb_http_client()
+
+    if not thumb:
+        refreshed = await _refresh_eh_thumb_from_api(gid=int(gid), token=safe_token, cfg=cfg, client=client)
+        thumb = str((refreshed or {}).get("thumb") or "").strip()
+    if not thumb:
+        raise HTTPException(status_code=404, detail="thumb not found")
+
+    urls = _build_eh_thumb_urls(thumb, prefer_ex)
+
     try:
-        r = requests.get(thumb, headers=headers, timeout=30)
-        if r.status_code >= 400:
-            raise HTTPException(status_code=r.status_code, detail="failed to fetch eh thumbnail")
-        ctype = r.headers.get("content-type", "image/jpeg")
-        _cache_write(cache_key, r.content)
-        return Response(content=r.content, media_type=ctype, headers={"X-Thumb-Cache": "MISS"})
+        data, ctype = await _fetch_bytes_with_retries(
+            client,
+            urls,
+            headers_factory=lambda u: _eh_headers_for(u, ua, cookie),
+            retries=3,
+            timeout_s=10.0,
+        )
     except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"eh thumbnail error: {e}")
+        refreshed = await _refresh_eh_thumb_from_api(gid=int(gid), token=safe_token, cfg=cfg, client=client)
+        refreshed_thumb = str((refreshed or {}).get("thumb") or "").strip()
+        if not refreshed_thumb or refreshed_thumb == thumb:
+            raise
+        retry_urls = _build_eh_thumb_urls(refreshed_thumb, prefer_ex)
+        data, ctype = await _fetch_bytes_with_retries(
+            client,
+            retry_urls,
+            headers_factory=lambda u: _eh_headers_for(u, ua, cookie),
+            retries=2,
+            timeout_s=10.0,
+        )
+
+    _cache_write(cache_key, data)
+    return Response(content=data, media_type=ctype, headers={"X-Thumb-Cache": "MISS"})
 
 
 @router.post("/api/home/search/image")
