@@ -28,27 +28,44 @@
         @click="emit('go-tab', item.key)"
       />
     </v-list>
-
+    
     <template #append v-if="!mobile">
       <v-divider />
       <div class="pa-2">
         <v-btn
+          v-if="rail"
+          icon
+          variant="outlined"
+          color="primary"
+          class="mb-2 mx-auto d-flex"
+          href="https://github.com/JBKing514/AutoEhHunter/issues"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Feedback"
+        >
+          <v-icon>mdi-bug-outline</v-icon>
+        </v-btn>
+
+        <v-btn
+          v-else
           block
           variant="outlined"
           color="primary"
           prepend-icon="mdi-bug-outline"
-          class="mb-2"
+          class="mb-2 sidebar-feedback-btn"
           href="https://github.com/JBKing514/AutoEhHunter/issues"
           target="_blank"
           rel="noopener noreferrer"
         >
-          Feedback
+          {{ t('nav.feedback') }}
         </v-btn>
+
         <v-btn
           block
           variant="text"
           color="medium-emphasis"
           @click="emit('update:rail', !rail)"
+          class="px-0"
         >
           <v-icon>{{ rail ? 'mdi-chevron-right' : 'mdi-chevron-left' }}</v-icon>
           <span v-if="!rail" class="ml-2">{{ t('nav.compact') }}</span>
@@ -72,12 +89,15 @@ const props = defineProps({
 
 const emit = defineEmits(["update:modelValue", "update:rail", "go-tab"]);
 
-// 引入 Vuetify 的响应式断点探测
 const { mobile } = useDisplay();
 </script>
 
 <style scoped>
 .app-sidebar-drawer {
   flex-shrink: 0;
+}
+
+.sidebar-feedback-btn {
+  justify-content: flex-start;
 }
 </style>

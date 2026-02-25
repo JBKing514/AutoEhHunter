@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+import traceback
 import uuid
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,9 @@ def run_task_async(task_name: str, args_line: str = "") -> dict[str, Any]:
                     "rc": event.get("rc", 1),
                     "elapsed_s": event.get("elapsed_s", 0),
                     "log_file": event.get("log_file", ""),
+                    "hint": event.get("hint", ""),
+                    "task_summary": event.get("task_summary", ""),
+                    "stderr_tail": event.get("stderr_tail", ""),
                     "updated_at": now_iso(),
                 }
         except Exception as e:
@@ -86,7 +90,7 @@ def trigger_task(req: TaskRunRequest) -> dict[str, Any]:
         item = run_task_async(req.task, req.args)
         return {"ok": True, "task": item}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail={"message": str(e), "traceback": traceback.format_exc()})
 
 
 @router.delete("/api/eh/checkpoint")

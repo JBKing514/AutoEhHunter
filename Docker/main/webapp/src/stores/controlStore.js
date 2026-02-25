@@ -13,6 +13,7 @@ export const useControlStore = defineStore("control", () => {
   let _formatDateTime = (v) => String(v || "-");
   let dashboardTimer = null;
   let tasksEventSource = null;
+  const taskStatusSeen = new Map();
 
   function init(deps = {}) {
     if (typeof deps.t === "function") _t = deps.t;
@@ -123,7 +124,20 @@ export const useControlStore = defineStore("control", () => {
     tasksEventSource.onmessage = (evt) => {
       try {
         const payload = JSON.parse(evt.data || "{}");
-        tasks.value = (payload.tasks || []).sort((a, b) => String(b.started_at || "").localeCompare(String(a.started_at || ""))).slice(0, 200);
+        const next = (payload.tasks || []).sort((a, b) => String(b.started_at || "").localeCompare(String(a.started_at || ""))).slice(0, 200);
+        tasks.value = next;
+        next.forEach((task) => {
+          const id = String(task?.task_id || "");
+          if (!id) return;
+          const status = String(task?.status || "");
+          const prev = taskStatusSeen.get(id) || "";
+          if (prev !== status && (status === "failed" || status === "timeout")) {
+            const hint = String(task?.hint || "").trim();
+            const summary = String(task?.task_summary || task?.error || "").trim();
+            _notify(`${t("task.failed")} ${task?.task || ""}${hint ? `\n${hint}` : ""}${summary ? `\n${summary}` : ""}`, "warning");
+          }
+          taskStatusSeen.set(id, status);
+        });
       } catch {
         // ignore
       }

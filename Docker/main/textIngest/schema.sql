@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS works (
     -- Embeddings (pgvector)
     desc_embedding   vector(1024),
     visual_embedding vector(1152),
+    cover_embedding_status text NOT NULL DEFAULT 'pending',
 
     -- Timestamp-like fields extracted from tags (epoch seconds)
     eh_posted     bigint,
@@ -35,12 +36,34 @@ CREATE TABLE IF NOT EXISTS works (
 ALTER TABLE works ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE works ADD COLUMN IF NOT EXISTS desc_embedding vector(1024);
 ALTER TABLE works ADD COLUMN IF NOT EXISTS visual_embedding vector(1152);
+ALTER TABLE works ADD COLUMN IF NOT EXISTS cover_embedding_status text NOT NULL DEFAULT 'pending';
+
+UPDATE works
+SET cover_embedding_status = CASE
+    WHEN visual_embedding IS NOT NULL THEN 'complete'
+    WHEN cover_embedding_status IN ('pending', 'processing', 'complete', 'fail') THEN cover_embedding_status
+    ELSE 'pending'
+END;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'works_cover_embedding_status_chk'
+    ) THEN
+        ALTER TABLE works
+        ADD CONSTRAINT works_cover_embedding_status_chk
+        CHECK (cover_embedding_status IN ('pending', 'processing', 'complete', 'fail'));
+    END IF;
+END $$;
 
 -- Fast tag membership queries: WHERE tags @> ARRAY['artist:foo']
 CREATE INDEX IF NOT EXISTS idx_works_tags_gin ON works USING gin (tags);
 CREATE INDEX IF NOT EXISTS idx_works_lastreadtime ON works (lastreadtime);
 CREATE INDEX IF NOT EXISTS idx_works_eh_posted ON works (eh_posted);
 CREATE INDEX IF NOT EXISTS idx_works_date_added ON works (date_added);
+CREATE INDEX IF NOT EXISTS idx_works_cover_status ON works (cover_embedding_status);
 
 -- Vector search indexes (HNSW)
 CREATE INDEX IF NOT EXISTS idx_works_desc_vec ON works USING hnsw (desc_embedding vector_cosine_ops);
@@ -72,6 +95,7 @@ CREATE TABLE IF NOT EXISTS eh_works (
     tags                 text[] NOT NULL DEFAULT ARRAY[]::text[],
     tags_translated      text[] NOT NULL DEFAULT ARRAY[]::text[],
     cover_embedding      vector(1152),
+    cover_embedding_status text NOT NULL DEFAULT 'pending',
     posted               bigint,
     uploader             text,
     filecount            integer,
@@ -91,6 +115,7 @@ ALTER TABLE eh_works ADD COLUMN IF NOT EXISTS tags_translated text[] NOT NULL DE
 ALTER TABLE eh_works ADD COLUMN IF NOT EXISTS eh_url text;
 ALTER TABLE eh_works ADD COLUMN IF NOT EXISTS ex_url text;
 ALTER TABLE eh_works ADD COLUMN IF NOT EXISTS cover_embedding vector(1152);
+ALTER TABLE eh_works ADD COLUMN IF NOT EXISTS cover_embedding_status text NOT NULL DEFAULT 'pending';
 ALTER TABLE eh_works ADD COLUMN IF NOT EXISTS posted bigint;
 ALTER TABLE eh_works ADD COLUMN IF NOT EXISTS uploader text;
 ALTER TABLE eh_works ADD COLUMN IF NOT EXISTS filecount integer;
@@ -107,12 +132,33 @@ SET eh_url = COALESCE(eh_url, 'https://e-hentai.org/g/' || gid::text || '/' || t
 UPDATE eh_works
 SET ex_url = COALESCE(ex_url, 'https://exhentai.org/g/' || gid::text || '/' || token || '/');
 
+UPDATE eh_works
+SET cover_embedding_status = CASE
+    WHEN cover_embedding IS NOT NULL THEN 'complete'
+    WHEN cover_embedding_status IN ('pending', 'processing', 'complete', 'fail') THEN cover_embedding_status
+    ELSE 'pending'
+END;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'eh_works_cover_embedding_status_chk'
+    ) THEN
+        ALTER TABLE eh_works
+        ADD CONSTRAINT eh_works_cover_embedding_status_chk
+        CHECK (cover_embedding_status IN ('pending', 'processing', 'complete', 'fail'));
+    END IF;
+END $$;
+
 ALTER TABLE eh_works DROP COLUMN IF EXISTS cover_image_b64;
 ALTER TABLE eh_works DROP COLUMN IF EXISTS cover_mime;
 ALTER TABLE eh_works DROP COLUMN IF EXISTS gallery_url;
 
 CREATE INDEX IF NOT EXISTS idx_eh_works_posted ON eh_works (posted);
 CREATE INDEX IF NOT EXISTS idx_eh_works_last_fetched ON eh_works (last_fetched_at);
+CREATE INDEX IF NOT EXISTS idx_eh_works_cover_status ON eh_works (cover_embedding_status);
 CREATE INDEX IF NOT EXISTS idx_eh_works_tags_gin ON eh_works USING gin (tags);
 CREATE INDEX IF NOT EXISTS idx_eh_works_tags_translated_gin ON eh_works USING gin (tags_translated);
 CREATE INDEX IF NOT EXISTS idx_eh_works_cover_vec ON eh_works USING hnsw (cover_embedding vector_cosine_ops);

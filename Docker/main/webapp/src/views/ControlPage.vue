@@ -14,7 +14,9 @@
               <v-col cols="12" md="4" lg="2"><v-btn block color="primary" @click="triggerTask('text_ingest')">{{ t('control.btn.text_ingest') }}</v-btn></v-col>
               <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('eh_lrr_ingest')">{{ t('control.btn.eh_lrr_ingest') }}</v-btn></v-col>
               <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('eh_ingest')">{{ t('control.btn.eh_ingest') }}</v-btn></v-col>
+              <v-col cols="12" md="4" lg="2"><v-btn block color="warning" variant="tonal" @click="triggerTask('eh_ingest', '--retry-fail-embedding')">{{ t('control.btn.eh_ingest_retry_fail') }}</v-btn></v-col>
               <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('lrr_ingest')">{{ t('control.btn.lrr_ingest') }}</v-btn></v-col>
+              <v-col cols="12" md="4" lg="2"><v-btn block color="warning" variant="tonal" @click="triggerTask('lrr_ingest', '--retry-fail-embedding')">{{ t('control.btn.lrr_ingest_retry_fail') }}</v-btn></v-col>
             </v-row>
           </v-card>
 

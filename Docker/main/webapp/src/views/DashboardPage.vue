@@ -1,6 +1,7 @@
 <template>
           <v-card class="pa-4 mb-4">
-            <div class="d-flex align-center ga-2 mb-3">
+            <div class="mb-3">
+              <div class="d-flex align-center ga-2">
               <v-text-field
                 v-model="homeSearchQuery"
                 class="home-search-input flex-grow-1"
@@ -37,11 +38,38 @@
                 </template>
               </v-text-field>
 
-              <v-btn v-if="homeTab === 'recommend'" color="secondary" variant="tonal" icon="mdi-shuffle-variant" rounded="lg" @click="shuffleRecommendBatch" />
-              <v-btn color="primary" variant="tonal" icon="mdi-filter-variant" rounded="lg" @click="homeFiltersOpen = true" />
+                <template v-if="!isMobile">
+                  <v-btn v-if="homeTab === 'recommend'" color="secondary" variant="tonal" icon="mdi-shuffle-variant" rounded="lg" @click="shuffleRecommendBatch" />
+                  <v-btn color="primary" variant="tonal" icon="mdi-filter-variant" rounded="lg" @click="homeFiltersOpen = true" />
+                </template>
+              </div>
+
+              <div v-if="isMobile" class="d-flex ga-2 mt-2">
+                <v-btn
+                  v-if="homeTab === 'recommend'"
+                  class="flex-grow-1"
+                  color="secondary"
+                  variant="tonal"
+                  prepend-icon="mdi-shuffle-variant"
+                  rounded="lg"
+                  @click="shuffleRecommendBatch"
+                >
+                  {{ t('home.recommend.shuffle') }}
+                </v-btn>
+                <v-btn
+                  :class="homeTab === 'recommend' ? 'flex-grow-1' : 'w-100'"
+                  color="primary"
+                  variant="tonal"
+                  prepend-icon="mdi-filter-variant"
+                  rounded="lg"
+                  @click="homeFiltersOpen = true"
+                >
+                  {{ t('home.filter.title') }}
+                </v-btn>
+              </div>
             </div>
 
-            <div class="d-flex align-center justify-space-between flex-wrap ga-2">
+            <div class="d-flex align-center justify-space-between flex-wrap ga-2 home-tab-row" :class="{ 'home-tab-row-mobile': isMobile }">
               <v-tabs v-model="homeTab" density="compact" color="primary">
                 <v-tab value="recommend" class="font-weight-bold">{{ t('home.tab.recommend') }}</v-tab>
                 <v-tab value="history" class="font-weight-bold">{{ t('home.tab.history') }}</v-tab>
@@ -365,3 +393,17 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.home-tab-row-mobile {
+  align-items: stretch;
+}
+
+.home-tab-row-mobile .v-tabs {
+  width: 100%;
+}
+
+.home-tab-row-mobile .home-view-toggle {
+  margin: 0 auto;
+}
+</style>

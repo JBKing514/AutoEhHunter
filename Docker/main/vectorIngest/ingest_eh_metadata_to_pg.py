@@ -3,7 +3,7 @@
 
 Features:
 - Calls EH API (`gdata`) in batches
-- Downloads gallery cover and stores SigLIP vector in `eh_works.cover_embedding`
+- Writes filtered metadata into `eh_works` and marks cover embedding status as pending
 - Loads EhTagTranslation db.text.js/json and translates tags
 - Translation file is refreshed daily by default (24h cache)
 
@@ -23,9 +23,9 @@ import html
 import json
 import re
 import sys
-import time
 import os
-from io import BytesIO
+import time
+import traceback
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -463,44 +463,25 @@ def _translate_tag(raw_tag: str, namespace_map: dict[str, str], tag_map: dict[st
     return f"{t_ns}:{t_val}"
 
 
-def _vector_literal(vec: list[float]) -> str:
-    return "[" + ",".join(repr(float(x)) for x in vec) + "]"
+def _reset_failed_embedding_status(dsn: str) -> int:
+    sql = (
+        "UPDATE eh_works "
+        "SET cover_embedding_status = 'pending', updated_at = now() "
+        "WHERE cover_embedding IS NULL AND cover_embedding_status = 'fail'"
+    )
+    try:
+        import importlib
 
+        psycopg = importlib.import_module("psycopg")
+    except Exception as e:
+        raise RuntimeError('Missing dependency psycopg. Install with: pip install "psycopg[binary]"') from e
 
-class SiglipClient:
-    def __init__(self, base_url: str, timeout_s: int = 120):
-        self.base_url = base_url.rstrip("/")
-        self.timeout_s = timeout_s
-
-    def embed_image_bytes(self, image_bytes: bytes) -> list[float]:
-        import base64
-        b64 = base64.b64encode(image_bytes).decode("ascii")
-        r = requests.post(
-            f"{self.base_url}/api/internal/embed/image",
-            json={"image": b64},
-            timeout=self.timeout_s,
-        )
-        r.raise_for_status()
-        obj = r.json()
-        emb = obj.get("embedding")
-        if not isinstance(emb, list):
-            raise RuntimeError(f"Invalid embedding response: {obj}")
-        return [float(x) for x in emb]
-
-
-def _fetch_cover_bytes(
-    session: requests.Session,
-    thumb_url: str,
-    referer: str,
-    timeout_s: int,
-) -> bytes | None:
-    if not thumb_url:
-        return None
-
-    headers = {"Referer": referer}
-    r = session.get(thumb_url, headers=headers, timeout=timeout_s)
-    r.raise_for_status()
-    return r.content
+    with psycopg.connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            updated = int(cur.rowcount or 0)
+        conn.commit()
+    return updated
 
 
 def _as_int_or_none(v: Any) -> int | None:
@@ -589,7 +570,7 @@ def _eh_gdata(
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description="Fetch EH metadata + covers and upsert into eh_works")
+    ap = argparse.ArgumentParser(description="Fetch EH metadata and upsert into eh_works")
     ap.add_argument("--dsn", required=True, help="PostgreSQL DSN")
     ap.add_argument("--api-url", default=DEFAULT_API_URL, help="EH API URL")
     ap.add_argument("--gallery-url", action="append", help="EH gallery URL (repeatable)")
@@ -609,9 +590,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--cookie", default="", help="Optional Cookie header for EH/EX access")
     ap.add_argument("--user-agent", default="AutoEhHunter/1.0", help="HTTP User-Agent")
     ap.add_argument(
-        "--siglip-base",
-        default=os.getenv("WEBAPI_BASE", "http://localhost:8501"),
-        help="Base URL for image embedding API (default: http://localhost:8501)",
+        "--retry-fail-embedding",
+        action="store_true",
+        help="Reset eh_works rows with cover_embedding_status=fail back to pending before ingest",
     )
 
     ap.add_argument(
@@ -685,12 +666,19 @@ def main(argv: list[str]) -> int:
     if args.queue_file and not args.gallery_file:
         args.gallery_file = args.queue_file
 
+    if args.retry_fail_embedding:
+        reset_n = _reset_failed_embedding_status(args.dsn)
+        print(f"Embedding status reset: fail->pending rows={reset_n}", file=sys.stderr)
+
     urls = _iter_gallery_urls(args)
     used_queue_table = False
     if not urls:
         urls = _dequeue_pending_urls(args.dsn, args.queue_table, args.queue_limit)
         used_queue_table = True
     if not urls:
+        if args.retry_fail_embedding:
+            print("No gallery URLs provided. Applied retry-fail reset only.", file=sys.stderr)
+            return 0
         print("No gallery URLs provided. Queue table has no pending rows.", file=sys.stderr)
         return 2
 
@@ -731,8 +719,6 @@ def main(argv: list[str]) -> int:
     blocked_tags = _parse_filter_values(args.exclude_tag)
     min_rating = args.min_rating if args.min_rating is None else float(args.min_rating)
 
-    siglip = SiglipClient(base_url=str(args.siglip_base), timeout_s=args.timeout)
-
     rows_to_upsert: list[tuple[Any, ...]] = []
     succeeded_keys: set[tuple[int, str]] = set()
     filtered_keys: set[tuple[int, str]] = set()
@@ -740,7 +726,6 @@ def main(argv: list[str]) -> int:
     filtered_rating = 0
     filtered_tag = 0
     processed = 0
-    cover_ok = 0
 
     for meta in all_meta:
         try:
@@ -753,7 +738,6 @@ def main(argv: list[str]) -> int:
 
             eh_url = f"https://e-hentai.org/g/{gid}/{token}/"
             ex_url = f"https://exhentai.org/g/{gid}/{token}/"
-            source_url = url_map.get((gid, token), eh_url)
             tags_raw = [str(t).strip() for t in (meta.get("tags") or []) if str(t).strip()]
             tags_translated = [_translate_tag(t, namespace_map, tag_map) for t in tags_raw]
 
@@ -780,24 +764,6 @@ def main(argv: list[str]) -> int:
                 filtered_keys.add((gid, token))
                 continue
 
-            cover_vec: list[float] | None = None
-            thumb = str(meta.get("thumb") or "").strip()
-            if thumb:
-                try:
-                    if sleep_s > 0:
-                        time.sleep(sleep_s)
-                    cover_bytes = _fetch_cover_bytes(
-                        session=session,
-                        thumb_url=thumb,
-                        referer=source_url,
-                        timeout_s=args.timeout,
-                    )
-                    if cover_bytes:
-                        cover_vec = siglip.embed_image_bytes(cover_bytes)
-                        cover_ok += 1
-                except Exception as e:
-                    print(f"WARN cover fetch failed gid={gid}: {e}", file=sys.stderr)
-
             raw_json = json.dumps(meta, ensure_ascii=False)
             rows_to_upsert.append(
                 (
@@ -810,7 +776,7 @@ def main(argv: list[str]) -> int:
                     category,
                     tags_raw,
                     tags_translated,
-                    _vector_literal(cover_vec) if cover_vec else None,
+                    "pending",
                     posted,
                     uploader,
                     filecount,
@@ -823,12 +789,13 @@ def main(argv: list[str]) -> int:
             processed += 1
         except Exception as e:
             print(f"WARN skip invalid metadata row: {e}", file=sys.stderr)
+            print(traceback.format_exc(), file=sys.stderr)
 
     print(
         f"Fetched metadata rows={len(all_meta)}, processed={processed}, "
         f"filtered_total={filtered_category + filtered_rating + filtered_tag}, "
         f"filtered(category={filtered_category},rating={filtered_rating},tag={filtered_tag}), "
-        f"cover_ok={cover_ok}, translation_sha={translation_head_sha or 'unknown'}",
+        f"translation_sha={translation_head_sha or 'unknown'}",
         file=sys.stderr,
     )
 
@@ -851,10 +818,10 @@ def main(argv: list[str]) -> int:
     upsert_sql = (
         "INSERT INTO eh_works ("
         "gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, "
-        "cover_embedding, posted, uploader, filecount, "
+        "cover_embedding_status, posted, uploader, filecount, "
         "translation_repo_url, translation_head_sha, raw, last_fetched_at, updated_at"
         ") VALUES ("
-        "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s, %s::jsonb, now(), now()"
+        "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, now(), now()"
         ") ON CONFLICT (gid, token) DO UPDATE SET "
         "eh_url = EXCLUDED.eh_url, "
         "ex_url = EXCLUDED.ex_url, "
@@ -863,7 +830,11 @@ def main(argv: list[str]) -> int:
         "category = EXCLUDED.category, "
         "tags = EXCLUDED.tags, "
         "tags_translated = EXCLUDED.tags_translated, "
-        "cover_embedding = COALESCE(EXCLUDED.cover_embedding, eh_works.cover_embedding), "
+        "cover_embedding_status = CASE "
+        "  WHEN eh_works.cover_embedding IS NOT NULL THEN 'complete' "
+        "  WHEN eh_works.cover_embedding_status = 'fail' THEN 'fail' "
+        "  ELSE 'pending' "
+        "END, "
         "posted = EXCLUDED.posted, "
         "uploader = EXCLUDED.uploader, "
         "filecount = EXCLUDED.filecount, "

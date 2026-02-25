@@ -167,6 +167,38 @@ def run_task(task_name: str, cmd: list[str], timeout_s: int = 1800) -> dict[str,
 
     elapsed = round(time.time() - started, 2)
 
+    def _task_error_hint(task: str, stderr_txt: str) -> str:
+        s = str(stderr_txt or "").lower()
+        if task == "eh_fetch":
+            if "checkpoint" in s:
+                return "Hint: EH checkpoint may be stale/corrupted; try clearing checkpoint from Control page."
+            if "timeout" in s or "connection" in s or "dns" in s:
+                return "Hint: EH network issue; verify EH_BASE_URL, connectivity, and cookie/user-agent settings."
+            return "Hint: check EH crawler log for URL fetch/parsing errors."
+        if task == "lrr_export":
+            if "database" in s or "postgres" in s:
+                return "Hint: LRR export DB access failed; verify LRR DB connection and credentials."
+            return "Hint: check LRR export script output for source DB/file access issues."
+        if task == "text_ingest":
+            if "metadata" in s or "not found" in s:
+                return "Hint: metadata file may be missing; run LRR export first and verify export path."
+            if "relation" in s or "column" in s or "pg" in s:
+                return "Hint: target pgvector schema mismatch; run latest schema.sql migrations."
+            return "Hint: check text ingest logs for pgvector schema/input parsing errors."
+        if task == "eh_ingest":
+            if "translation" in s:
+                return "Hint: translation payload error; verify TAG_TRANSLATION_REPO or network to translation source."
+            if "timeout" in s or "connection" in s or "dns" in s:
+                return "Hint: EH network failure; verify EH network reachability and request throttle settings."
+            return "Hint: check EH ingest logs for metadata fetch/title-tags parse issues."
+        if task == "lrr_ingest":
+            if "chat/completions" in s or "vlm" in s:
+                return "Hint: VL model endpoint/config may be invalid; verify INGEST_API_BASE and INGEST_VL_MODEL."
+            if "embeddings" in s or "embedding" in s:
+                return "Hint: EMB model endpoint/config may be invalid; verify INGEST_API_BASE and INGEST_EMB_MODEL."
+            return "Hint: check LRR ingest logs for VL/EMB service connectivity or model loading errors."
+        return ""
+
     def _sanitize_task_log_text(task: str, text: str) -> str:
         raw = str(text or "")
         if task not in {"eh_ingest", "lrr_ingest", "eh_lrr_ingest", "text_ingest"}:
@@ -189,6 +221,10 @@ def run_task(task_name: str, cmd: list[str], timeout_s: int = 1800) -> dict[str,
         + "\n--- STDERR ---\n"
         + _sanitize_task_log_text(task_name, err)
     )
+    if status != "success":
+        hint = _task_error_hint(task_name, err)
+        if hint:
+            content += "\n--- HINT ---\n" + hint + "\n"
     log_path.write_text(content, encoding="utf-8")
     out_tail = _sanitize_task_log_text(task_name, out)[-4000:]
     err_tail = _sanitize_task_log_text(task_name, err)[-4000:]
@@ -203,6 +239,7 @@ def run_task(task_name: str, cmd: list[str], timeout_s: int = 1800) -> dict[str,
         "stdout_tail": out_tail,
         "stderr_tail": err_tail,
         "task_summary": (out_tail + "\n" + err_tail)[-1200:],
+        "hint": _task_error_hint(task_name, err),
     }
     append_run_history(event)
     return event

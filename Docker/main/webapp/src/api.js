@@ -27,6 +27,26 @@ api.interceptors.response.use(
     if (error?.response?.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("aeh-auth-required"));
     }
+    try {
+      const data = error?.response?.data;
+      if (data && typeof data === "object") {
+        const detailObj = data.detail;
+        const detail = String(
+          (detailObj && typeof detailObj === "object" && detailObj.message) || detailObj || error?.message || "request failed",
+        ).trim();
+        const tb = String(
+          data.traceback || (detailObj && typeof detailObj === "object" ? detailObj.traceback : "") || "",
+        ).trim();
+        if (tb) {
+          data.detail = `${detail}\n\nTraceback:\n${tb}`;
+          error.message = data.detail;
+        } else if (detail) {
+          error.message = detail;
+        }
+      }
+    } catch {
+      // ignore error decoration failures
+    }
     return Promise.reject(error);
   },
 );

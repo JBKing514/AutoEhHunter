@@ -8,6 +8,7 @@ from ..core.runtime_state import scheduler
 from ..services.auth_service import ensure_auth_schema
 from ..services.config_service import apply_runtime_timezone, ensure_dirs, resolve_config
 from ..services.db_service import db_dsn, query_rows
+from ..services.eh_cover_embedding_service import start_eh_cover_embedding_worker, stop_eh_cover_embedding_worker
 from ..services.schedule_service import sync_scheduler
 from ..services.search_service import _item_from_work
 from ..services.vision_service import warmup_siglip_model, _embed_image_siglip
@@ -56,10 +57,15 @@ def _on_startup() -> None:
         warmup_siglip_model(str(cfg.get("SIGLIP_MODEL") or "google/siglip-so400m-patch14-384"), strict=False)
     except Exception:
         pass
+    try:
+        start_eh_cover_embedding_worker()
+    except Exception:
+        pass
 
 
 @router.on_event("shutdown")
 def _on_shutdown() -> None:
+    stop_eh_cover_embedding_worker()
     if scheduler.running:
         scheduler.shutdown(wait=False)
 

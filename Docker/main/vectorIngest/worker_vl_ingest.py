@@ -5,7 +5,7 @@ Pipeline per arcid:
   - Fetch cover + 3 random pages from LANraragi Archive API
   - Send images to a local OpenAI-compatible VLM (llama.cpp llama-server)
   - Embed the resulting description text using a local embedding server (bge-m3)
-  - Compute a visual embedding using SigLIP (transformers)
+  - Compute a visual embedding using local SigLIP runtime (same path as webapi vision service)
   - Write back: works.description, works.desc_embedding, works.visual_embedding
 
 This is designed to run on your Ubuntu worker box.
@@ -27,6 +27,7 @@ import tempfile
 import time
 import uuid
 import shutil
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -371,29 +372,15 @@ class OpenAICompatClient:
         return [float(x) for x in emb]
 
 
-class SiglipClient:
-    def __init__(self, base_url: str, timeout_s: int = 120):
-        self.base_url = base_url.rstrip("/")
-        self.timeout_s = timeout_s
-
-    def embed_image_bytes(self, image_bytes: bytes) -> list[float]:
-        import base64
-        b64 = base64.b64encode(image_bytes).decode("ascii")
-        r = requests.post(
-            f"{self.base_url}/api/internal/embed/image",
-            json={"image": b64},
-            timeout=self.timeout_s,
-        )
-        r.raise_for_status()
-        obj = r.json()
-        emb = obj.get("embedding")
-        if not isinstance(emb, list):
-            raise RuntimeError(f"Invalid embedding response: {obj}")
-        return [float(x) for x in emb]
-
-    def embed_image_path(self, image_path: str) -> list[float]:
-        with open(image_path, "rb") as f:
-            return self.embed_image_bytes(f.read())
+def _embed_image_siglip_local(image_bytes: bytes, model_id: str) -> list[float]:
+    try:
+        from webapi.services.vision_service import _embed_image_siglip
+    except Exception:
+        root = str(Path(__file__).resolve().parents[1])
+        if root not in sys.path:
+            sys.path.append(root)
+        from webapi.services.vision_service import _embed_image_siglip
+    return _embed_image_siglip(image_bytes, model_id)
 
 
 def _l2_normalize(vec: list[float]) -> list[float]:
@@ -731,9 +718,9 @@ def main(argv: list[str]) -> int:
     )
 
     ap.add_argument(
-        "--siglip-base",
-        default=os.getenv("WEBAPI_BASE", "http://localhost:8501"),
-        help="Base URL for image embedding API (default: http://localhost:8501)",
+        "--siglip-model",
+        default=os.getenv("SIGLIP_MODEL", "google/siglip-so400m-patch14-384"),
+        help="SigLIP model id for local embedding runtime",
     )
     ap.add_argument(
         "--siglip-only",
@@ -752,6 +739,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--batch", type=int, default=int(os.getenv("WORKER_BATCH", "32")), help="DB update batch size")
     ap.add_argument("--dry-run", action="store_true", default=_env_bool("WORKER_DRY_RUN", False))
     ap.add_argument("--only-missing", action="store_true", default=_env_bool("WORKER_ONLY_MISSING", True), help="Process only rows missing embeddings/description")
+    ap.add_argument(
+        "--retry-fail-embedding",
+        action="store_true",
+        help="Reset works rows with cover_embedding_status=fail back to pending before processing",
+    )
     ap.add_argument("--arcid", nargs="*", help="Specific arcid(s) to process")
     ap.add_argument("--sleep", type=float, default=float(os.getenv("WORKER_SLEEP", "0")), help="Sleep seconds between items")
     ap.add_argument(
@@ -797,8 +789,8 @@ def main(argv: list[str]) -> int:
             v = str(db_cfg.get("INGEST_EMB_MODEL_CUSTOM") or db_cfg.get("INGEST_EMB_MODEL") or db_cfg.get("EMB_MODEL_ID") or "").strip()
             if v:
                 args.emb_model = v
-        if not _arg_present(argv, "--siglip-base") and str(db_cfg.get("WEBAPI_BASE", "")).strip():
-            args.siglip_base = str(db_cfg.get("WEBAPI_BASE", "")).strip()
+        if not _arg_present(argv, "--siglip-model") and str(db_cfg.get("SIGLIP_MODEL", "")).strip():
+            args.siglip_model = str(db_cfg.get("SIGLIP_MODEL", "")).strip()
         if not _arg_present(argv, "--batch") and str(db_cfg.get("WORKER_BATCH", "")).strip():
             try:
                 args.batch = int(str(db_cfg.get("WORKER_BATCH", "")).strip())
@@ -866,9 +858,6 @@ def main(argv: list[str]) -> int:
 
     rng = random.Random(args.seed)
 
-    # Lazy-init SigLIP because it is heavy.
-    siglip: SiglipClient | None = None
-
     try:
         import psycopg
     except Exception as e:
@@ -887,6 +876,11 @@ def main(argv: list[str]) -> int:
             if args.only_missing
             else ""
         )
+        + (
+            "AND (cover_embedding_status IS NULL OR cover_embedding_status IN ('pending','processing')) "
+            if args.only_missing
+            else "WHERE (cover_embedding_status IS NULL OR cover_embedding_status IN ('pending','processing')) "
+        )
         + "ORDER BY arcid"
     )
 
@@ -902,19 +896,30 @@ def main(argv: list[str]) -> int:
         conn.execute("SET statement_timeout = '10min'")
         if not arcids:
             with conn.cursor() as cur:
+                if args.retry_fail_embedding:
+                    cur.execute(
+                        "UPDATE works SET cover_embedding_status='pending' "
+                        "WHERE visual_embedding IS NULL AND cover_embedding_status='fail'"
+                    )
                 cur.execute(select_sql)
                 arcids = [r[0] for r in cur.fetchall()]
+                conn.commit()
         if args.limit and args.limit > 0:
             arcids = arcids[: args.limit]
 
         print(f"Will process arcids={len(arcids)}")
 
-        pending_full: list[tuple[str, str, str, str]] = []
-        pending_visual: list[tuple[str, str]] = []
-
         for i, arcid in enumerate(arcids, start=1):
             t0 = time.time()
             try:
+                if not args.dry_run:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE works SET cover_embedding_status='processing' WHERE arcid=%s",
+                            (arcid,),
+                        )
+                    conn.commit()
+
                 blobs = _pick_images(lrr, arcid, rng=rng, k_random_pages=3)
                 if args.vl_normalize_jpeg:
                     norm: list[bytes] = []
@@ -1012,12 +1017,6 @@ def main(argv: list[str]) -> int:
                         else:
                             raise
 
-                if siglip is None:
-                    siglip = SiglipClient(
-                        base_url=args.siglip_base,
-                        timeout_s=120,
-                    )
-
                 # Visual embedding: average over sampled images, then L2 normalize.
                 with tempfile.TemporaryDirectory(prefix=f"lrr_{arcid}_") as td:
                     paths: list[str] = []
@@ -1025,7 +1024,10 @@ def main(argv: list[str]) -> int:
                         p = str(Path(td) / f"img_{j:02d}.jpg")
                         Path(p).write_bytes(b)
                         paths.append(p)
-                    vecs = [siglip.embed_image_path(p) for p in paths]
+                    vecs = []
+                    for p in paths:
+                        with open(p, "rb") as f:
+                            vecs.append(_embed_image_siglip_local(f.read(), args.siglip_model))
                     dim = len(vecs[0])
                     acc = [0.0] * dim
                     for v in vecs:
@@ -1037,32 +1039,23 @@ def main(argv: list[str]) -> int:
                     visual = _l2_normalize(acc)
 
                 if use_text_pipeline:
-                    pending_full.append(
-                        (
-                            arcid,
-                            description,
-                            _vector_literal(semantic),
-                            _vector_literal(visual),
-                        )
-                    )
-                    if not args.dry_run and len(pending_full) >= args.batch:
+                    if not args.dry_run:
                         with conn.cursor() as cur:
-                            cur.executemany(
-                                "UPDATE works SET description = %s, desc_embedding = %s::vector, visual_embedding = %s::vector WHERE arcid = %s",
-                                [(d, s, v, a) for (a, d, s, v) in pending_full],
+                            cur.execute(
+                                "UPDATE works "
+                                "SET description = %s, desc_embedding = %s::vector, visual_embedding = %s::vector, cover_embedding_status='complete' "
+                                "WHERE arcid = %s",
+                                (description, _vector_literal(semantic), _vector_literal(visual), arcid),
                             )
                         conn.commit()
-                        pending_full.clear()
                 else:
-                    pending_visual.append((arcid, _vector_literal(visual)))
-                    if not args.dry_run and len(pending_visual) >= args.batch:
+                    if not args.dry_run:
                         with conn.cursor() as cur:
-                            cur.executemany(
-                                "UPDATE works SET visual_embedding = %s::vector WHERE arcid = %s",
-                                [(v, a) for (a, v) in pending_visual],
+                            cur.execute(
+                                "UPDATE works SET visual_embedding = %s::vector, cover_embedding_status='complete' WHERE arcid = %s",
+                                (_vector_literal(visual), arcid),
                             )
                         conn.commit()
-                        pending_visual.clear()
 
                 dt = time.time() - t0
                 mode_txt = "full" if use_text_pipeline else "siglip-only"
@@ -1070,25 +1063,18 @@ def main(argv: list[str]) -> int:
 
             except Exception as e:
                 dt = time.time() - t0
-                print(f"[{i}/{len(arcids)}] ERROR {arcid} ({dt:.2f}s): {e}")
+                print(f"[{i}/{len(arcids)}] ERROR {arcid} ({dt:.2f}s): {e}", file=sys.stderr)
+                print(traceback.format_exc(), file=sys.stderr)
+                if not args.dry_run:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE works SET cover_embedding_status='fail' WHERE arcid = %s",
+                            (arcid,),
+                        )
+                    conn.commit()
 
             if args.sleep > 0:
                 time.sleep(args.sleep)
-
-        if pending_full and not args.dry_run:
-            with conn.cursor() as cur:
-                cur.executemany(
-                    "UPDATE works SET description = %s, desc_embedding = %s::vector, visual_embedding = %s::vector WHERE arcid = %s",
-                    [(d, s, v, a) for (a, d, s, v) in pending_full],
-                )
-            conn.commit()
-        if pending_visual and not args.dry_run:
-            with conn.cursor() as cur:
-                cur.executemany(
-                    "UPDATE works SET visual_embedding = %s::vector WHERE arcid = %s",
-                    [(v, a) for (a, v) in pending_visual],
-                )
-            conn.commit()
 
     return 0
 
