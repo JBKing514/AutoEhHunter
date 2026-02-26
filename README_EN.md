@@ -4,7 +4,7 @@
 </p>
 
 # AutoEhHunter
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL-3.0-blue.svg)](https://opensource.org/licenses/MIT) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/) [![Vue 3](https://img.shields.io/badge/Vue.js-3.x-4FC08D.svg)](https://vuejs.org/) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL3.0-blue.svg)](https://opensource.org/licenses/MIT) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/) [![Vue 3](https://img.shields.io/badge/Vue.js-3.x-4FC08D.svg)](https://vuejs.org/) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
 
 > 🌐 Language / 语言: [English](README_EN.md) | [中文](README.md)
 
