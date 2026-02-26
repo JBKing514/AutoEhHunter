@@ -6,6 +6,26 @@
 
       <v-window v-model="step" class="mb-3">
         <v-window-item :value="0">
+          <div class="text-subtitle-1 mb-1">{{ t('setup.step.ui') }}</div>
+          <div class="text-body-2 text-medium-emphasis mb-3">{{ t('setup.ui.hint') }}</div>
+          <v-row>
+            <v-col cols="12" md="4">
+              <v-select
+                v-model="setupForm.DATA_UI_LANG"
+                :items="layout.langOptions"
+                item-title="title"
+                item-value="value"
+                :label="t('settings.ui.lang')"
+              />
+            </v-col>
+            <v-col cols="12" md="4"><v-select v-model="setupForm.DATA_UI_TIMEZONE" :items="settings.timezoneOptions" :label="t('settings.ui.timezone')" /></v-col>
+            <v-col cols="12" md="4"><v-select v-model="setupForm.DATA_UI_THEME_MODE" :items="settings.themeModeOptions" item-title="title" item-value="value" :label="t('settings.ui.theme_mode')" /></v-col>
+            <v-col cols="12" md="6"><v-select v-model="setupForm.DATA_UI_THEME_PRESET" :items="settings.themeOptions" item-title="title" item-value="value" :label="t('settings.ui.theme_preset')" /></v-col>
+            <v-col cols="12" md="6"><v-switch v-model="setupForm.DATA_UI_THEME_OLED" :label="t('settings.ui.theme_oled')" color="primary" inset hide-details /></v-col>
+          </v-row>
+        </v-window-item>
+
+        <v-window-item :value="1">
           <div class="text-subtitle-1 mb-3">{{ t('setup.step.db') }}</div>
           <v-row>
             <v-col cols="12" md="4"><v-text-field v-model="setupForm.POSTGRES_HOST" :label="t('settings.pg.host')" /></v-col>
@@ -21,7 +41,7 @@
           </div>
         </v-window-item>
 
-        <v-window-item :value="1">
+        <v-window-item :value="2">
           <div class="text-subtitle-1 mb-3">{{ t('setup.step.lrr') }}</div>
           <v-row>
             <v-col cols="12" md="8"><v-text-field v-model="setupForm.LRR_BASE" :label="t('settings.lrr.base')" /></v-col>
@@ -33,7 +53,7 @@
           </div>
         </v-window-item>
 
-        <v-window-item :value="2">
+        <v-window-item :value="3">
           <div class="text-subtitle-1 mb-3">{{ t('setup.step.eh') }}</div>
           <v-row>
             <v-col cols="12" md="6"><v-text-field v-model="setupForm.EH_BASE_URL" :label="t('settings.eh.base_url')" /></v-col>
@@ -49,7 +69,7 @@
           </v-row>
         </v-window-item>
 
-        <v-window-item :value="3">
+        <v-window-item :value="4">
           <div class="text-subtitle-1 mb-3">{{ t('setup.step.ingest') }}</div>
           <v-alert type="warning" variant="tonal" class="mb-3">{{ t('setup.optional_limited') }}</v-alert>
           <div class="d-flex ga-2 align-center mb-3">
@@ -67,7 +87,7 @@
           </v-row>
         </v-window-item>
 
-        <v-window-item :value="4">
+        <v-window-item :value="5">
           <div class="text-subtitle-1 mb-3">{{ t('setup.step.llm') }}</div>
           <v-alert type="warning" variant="tonal" class="mb-3">{{ t('setup.optional_llm') }}</v-alert>
           <v-row>
@@ -80,12 +100,12 @@
           </v-row>
         </v-window-item>
 
-        <v-window-item :value="5">
+        <v-window-item :value="6">
           <div class="text-h6 font-weight-bold mb-2">{{ t('setup.done.title') }}</div>
           <div class="text-body-2 text-medium-emphasis">{{ t('setup.done.desc') }}</div>
         </v-window-item>
 
-        <v-window-item :value="6">
+        <v-window-item :value="7">
           <div class="text-h6 font-weight-bold mb-2">{{ t('setup.recovery.title') }}</div>
           <v-alert type="warning" variant="tonal" class="mb-3">{{ t('setup.recovery.warning') }}</v-alert>
           <div class="recovery-codes-list mb-3">
@@ -96,9 +116,12 @@
       </v-window>
 
       <div class="d-flex justify-space-between">
-        <v-btn variant="text" :disabled="step <= 0" @click="step = Math.max(0, step - 1)">{{ t('setup.prev') }}</v-btn>
-        <v-btn v-if="step < 5" color="primary" :disabled="(step === 0 && !setupDbValid) || (step === 1 && !setupLrrValid)" :loading="setupBusy" @click="goSetupNext(step)">{{ t('setup.next') }}</v-btn>
-        <v-btn v-else-if="step === 5" color="success" :loading="setupBusy" @click="finishSetupWizard">{{ t('setup.finish') }}</v-btn>
+        <div class="d-flex ga-2">
+          <v-btn variant="text" :disabled="step <= 0" @click="step = Math.max(0, step - 1)">{{ t('setup.prev') }}</v-btn>
+          <v-btn v-if="canAbortWizard" variant="text" color="warning" @click="cancelSetupWizard">{{ t('setup.cancel') }}</v-btn>
+        </div>
+        <v-btn v-if="step < 6" color="primary" :disabled="(step === 1 && !setupDbValid) || (step === 2 && !setupLrrValid)" :loading="setupBusy" @click="goSetupNext(step)">{{ t('setup.next') }}</v-btn>
+        <v-btn v-else-if="step === 6" color="success" :loading="setupBusy" @click="finishSetupWizard">{{ t('setup.finish') }}</v-btn>
         <v-btn v-else color="primary" @click="closeRecoveryStep">{{ t('setup.recovery.acknowledge') }}</v-btn>
       </div>
     </v-card>
@@ -107,13 +130,15 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from "vue";
-import { completeSetup, getProviderModels, validateSetupDb, validateSetupLrr } from "../api";
+import { completeSetup, getProviderModels, getSetupStatus, validateSetupDb, validateSetupLrr } from "../api";
 import { useAppStore } from "../stores/appStore";
+import { useLayoutStore } from "../stores/layoutStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
 const { t } = defineProps({ t: { type: Function, required: true } });
 
 const app = useAppStore();
+const layout = useLayoutStore();
 const settings = useSettingsStore();
 
 const step = ref(0);
@@ -123,7 +148,13 @@ const setupLrrValid = ref(false);
 const setupIngestModelOptions = ref([]);
 const setupLlmModelOptions = ref([]);
 const recoveryCodes = ref([]);
+const canAbortWizard = ref(false);
 const setupForm = reactive({
+  DATA_UI_LANG: "zh",
+  DATA_UI_TIMEZONE: "UTC",
+  DATA_UI_THEME_MODE: "system",
+  DATA_UI_THEME_PRESET: "modern",
+  DATA_UI_THEME_OLED: false,
   POSTGRES_HOST: "localhost",
   POSTGRES_PORT: 5432,
   POSTGRES_DB: "autoeh",
@@ -159,6 +190,25 @@ const setupForm = reactive({
 
 const siglipDownloading = computed(() => settings.siglipDownload.status && settings.siglipDownload.status !== "done");
 
+function syncUiPreview() {
+  const lang = String(setupForm.DATA_UI_LANG || "zh").trim().toLowerCase() === "en" ? "en" : "zh";
+  layout.setLangValue(lang);
+  settings.config.DATA_UI_LANG = lang;
+  settings.config.DATA_UI_TIMEZONE = String(setupForm.DATA_UI_TIMEZONE || "UTC");
+  settings.config.DATA_UI_THEME_MODE = String(setupForm.DATA_UI_THEME_MODE || "system");
+  settings.config.DATA_UI_THEME_PRESET = String(setupForm.DATA_UI_THEME_PRESET || "modern");
+  settings.config.DATA_UI_THEME_OLED = !!setupForm.DATA_UI_THEME_OLED;
+}
+
+async function refreshCanAbortWizard() {
+  try {
+    const st = await getSetupStatus();
+    canAbortWizard.value = !!st?.initialized && !!st?.user_configured;
+  } catch {
+    canAbortWizard.value = false;
+  }
+}
+
 function applySetupFormToConfig() {
   Object.entries(setupForm).forEach(([k, v]) => {
     settings.config[k] = v;
@@ -172,8 +222,14 @@ watch(
     step.value = 0;
     setupDbValid.value = false;
     setupLrrValid.value = false;
+    await refreshCanAbortWizard();
     await settings.loadConfigData();
     Object.assign(setupForm, {
+      DATA_UI_LANG: settings.config.DATA_UI_LANG || layout.lang || setupForm.DATA_UI_LANG,
+      DATA_UI_TIMEZONE: settings.config.DATA_UI_TIMEZONE || setupForm.DATA_UI_TIMEZONE,
+      DATA_UI_THEME_MODE: settings.config.DATA_UI_THEME_MODE || setupForm.DATA_UI_THEME_MODE,
+      DATA_UI_THEME_PRESET: settings.config.DATA_UI_THEME_PRESET || setupForm.DATA_UI_THEME_PRESET,
+      DATA_UI_THEME_OLED: !!settings.config.DATA_UI_THEME_OLED,
       POSTGRES_HOST: settings.config.POSTGRES_HOST || setupForm.POSTGRES_HOST,
       POSTGRES_PORT: Number(settings.config.POSTGRES_PORT || setupForm.POSTGRES_PORT),
       POSTGRES_DB: settings.config.POSTGRES_DB || setupForm.POSTGRES_DB,
@@ -206,9 +262,16 @@ watch(
       LLM_MODEL_CUSTOM: settings.config.LLM_MODEL_CUSTOM || "",
       EMB_MODEL_CUSTOM: settings.config.EMB_MODEL_CUSTOM || "",
     });
+    syncUiPreview();
   },
   { immediate: true },
 );
+
+watch(() => setupForm.DATA_UI_LANG, syncUiPreview);
+watch(() => setupForm.DATA_UI_TIMEZONE, syncUiPreview);
+watch(() => setupForm.DATA_UI_THEME_MODE, syncUiPreview);
+watch(() => setupForm.DATA_UI_THEME_PRESET, syncUiPreview);
+watch(() => setupForm.DATA_UI_THEME_OLED, syncUiPreview);
 
 watch(() => setupForm.INGEST_API_BASE, async () => {
   const base = String(setupForm.INGEST_API_BASE || "").trim();
@@ -303,7 +366,7 @@ async function validateSetupLrrStep() {
 async function goSetupNext(currentStep) {
   setupBusy.value = true;
   try {
-    if ([2, 3, 4].includes(Number(currentStep))) {
+    if ([3, 4, 5].includes(Number(currentStep))) {
       applySetupFormToConfig();
       await settings.saveConfig();
     }
@@ -321,7 +384,7 @@ async function finishSetupWizard() {
     const result = await completeSetup();
     if (result.recovery_codes && result.recovery_codes.length > 0) {
       recoveryCodes.value = result.recovery_codes;
-      step.value = 6;
+      step.value = 7;
     } else {
       app.closeSetupWizard();
       settings.notify(t('setup.done.toast'), 'success');
@@ -337,6 +400,18 @@ function closeRecoveryStep() {
   recoveryCodes.value = [];
   app.closeSetupWizard();
   settings.notify(t('setup.done.toast'), 'success');
+}
+
+async function cancelSetupWizard() {
+  try {
+    await settings.loadConfigData();
+    if (settings.config.DATA_UI_LANG === "en" || settings.config.DATA_UI_LANG === "zh") {
+      layout.setLangValue(settings.config.DATA_UI_LANG);
+    }
+  } catch {
+    // ignore reload failures on cancel
+  }
+  app.closeSetupWizard();
 }
 
 function copyRecoveryCodes() {

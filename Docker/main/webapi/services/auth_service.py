@@ -128,12 +128,17 @@ def bootstrap_status(dsn: str) -> dict[str, Any]:
             users = int((cur.fetchone() or {}).get("n") or 0)
             cur.execute("SELECT value FROM ui_meta WHERE key IN ('user_confiured','user_configured') ORDER BY updated_at DESC LIMIT 1")
             row = cur.fetchone() or {}
-            configured_tag = bool(str(row.get("value") or "").strip())
+            user_configured = bool(str(row.get("value") or "").strip())
             cur.execute("SELECT value FROM ui_meta WHERE key='initialized' LIMIT 1")
             row2 = cur.fetchone() or {}
             initialized = bool(str(row2.get("value") or "").strip())
-    configured = bool(configured_tag or users > 0)
-    return {"configured": configured, "initialized": initialized, "user_count": users}
+    configured = bool(user_configured or users > 0)
+    return {
+        "configured": configured,
+        "initialized": initialized,
+        "user_configured": user_configured,
+        "user_count": users,
+    }
 
 
 def register_first_admin(dsn: str, username: str, password: str, pepper: str = "") -> dict[str, Any]:

@@ -98,7 +98,11 @@ def setup_status() -> dict[str, Any]:
     if not dsn:
         raise HTTPException(status_code=503, detail="database is not configured")
     st = auth_bootstrap_status(dsn)
-    return {"ok": True, "initialized": bool(st.get("initialized"))}
+    return {
+        "ok": True,
+        "initialized": bool(st.get("initialized")),
+        "user_configured": bool(st.get("user_configured")),
+    }
 
 
 @router.post("/api/setup/validate-db")
