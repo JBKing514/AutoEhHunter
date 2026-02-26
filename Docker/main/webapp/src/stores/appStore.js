@@ -46,7 +46,10 @@ export const useAppStore = defineStore("app", () => {
     try {
       const b = await getAuthBootstrap();
       authConfigured.value = !!b.configured;
-      if (b.configured) {
+      if (!b.db_ready) {
+        showAuthGate.value = false;
+        showSetupWizard.value = true;
+      } else if (b.configured) {
         const me = await getMe();
         authUser.value = me.user || {};
         accountForm.value.username = String(authUser.value.username || "");
@@ -56,7 +59,8 @@ export const useAppStore = defineStore("app", () => {
         showSetupWizard.value = !st.initialized;
         showAuthGate.value = false;
       } else {
-        showAuthGate.value = true;
+        showAuthGate.value = false;
+        showSetupWizard.value = true;
       }
     } catch (e) {
       authConfigured.value = true;

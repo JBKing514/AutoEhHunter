@@ -33,7 +33,7 @@ from ..services.db_service import _build_dsn, db_dsn, query_rows
 from ..services.dev_schema import inject_schema_sql, save_schema_upload, schema_status
 from ..services.schedule_service import sync_scheduler
 from ..services.search_service import _clear_thumb_cache, _thumb_cache_stats
-from ..services.setup_service import validate_db_connection, validate_lrr
+from ..services.setup_service import init_core_schema, validate_db_connection, validate_lrr
 from ..services.vision_service import (
     _clear_runtime_pydeps,
     _clear_siglip_runtime,
@@ -96,10 +96,28 @@ def get_config_schema() -> dict[str, Any]:
 def setup_status() -> dict[str, Any]:
     dsn = db_dsn()
     if not dsn:
-        raise HTTPException(status_code=503, detail="database is not configured")
-    st = auth_bootstrap_status(dsn)
+        return {
+            "ok": True,
+            "db_ready": False,
+            "configured": False,
+            "initialized": False,
+            "user_configured": False,
+        }
+    try:
+        st = auth_bootstrap_status(dsn)
+    except Exception as e:
+        return {
+            "ok": True,
+            "db_ready": False,
+            "configured": False,
+            "initialized": False,
+            "user_configured": False,
+            "db_error": str(e),
+        }
     return {
         "ok": True,
+        "db_ready": True,
+        "configured": bool(st.get("configured")),
         "initialized": bool(st.get("initialized")),
         "user_configured": bool(st.get("user_configured")),
     }
@@ -107,8 +125,13 @@ def setup_status() -> dict[str, Any]:
 
 @router.post("/api/setup/validate-db")
 def setup_validate_db(req: SetupValidateDbRequest) -> dict[str, Any]:
-    ok, msg, _ = validate_db_connection(req.host, int(req.port or 5432), req.db, req.user, req.password, req.sslmode)
-    return {"ok": ok, "message": msg}
+    ok, msg, dsn = validate_db_connection(req.host, int(req.port or 5432), req.db, req.user, req.password, req.sslmode)
+    if not ok:
+        return {"ok": False, "message": msg}
+    schema_ok, schema_msg = init_core_schema(dsn)
+    if not schema_ok:
+        return {"ok": False, "message": f"db ok, but schema init failed: {schema_msg}"}
+    return {"ok": True, "message": "ok"}
 
 
 @router.post("/api/setup/validate-lrr")
@@ -360,8 +383,11 @@ def translation_status() -> dict[str, Any]:
         "size": manual.stat().st_size if manual.exists() else 0,
         "updated_at": datetime.fromtimestamp(manual.stat().st_mtime, tz=_runtime_tzinfo()).isoformat(timespec="seconds") if manual.exists() else "-",
     }
-    rows = query_rows("SELECT max(last_fetched_at) as ts, max(translation_repo_url) as repo, max(translation_head_sha) as sha FROM eh_works")
-    latest = rows[0] if rows else {}
+    try:
+        rows = query_rows("SELECT max(last_fetched_at) as ts, max(translation_repo_url) as repo, max(translation_head_sha) as sha FROM eh_works")
+        latest = rows[0] if rows else {}
+    except Exception:
+        latest = {}
     fetched = latest.get("ts")
     fetched_txt = fetched.astimezone(_runtime_tzinfo()).isoformat(timespec="seconds") if isinstance(fetched, datetime) else "-"
     return {

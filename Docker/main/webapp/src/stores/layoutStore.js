@@ -132,7 +132,7 @@ export const useLayoutStore = defineStore("layout", () => {
 
   function pushNotice(type, title, text) {
     const id = `${type}-${Date.now()}`;
-    if ((notices.value || []).some((x) => x.type === type)) return;
+    notices.value = (notices.value || []).filter((x) => x.type !== type);
     notices.value.unshift({ id, type, title, text, ts: Date.now() });
     notices.value = notices.value.slice(0, 100);
   }

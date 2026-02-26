@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
 
 import psycopg
 import requests
@@ -37,5 +38,36 @@ def validate_lrr(base: str, api_key: str, timeout_s: int = 8) -> tuple[bool, str
         if 200 <= int(r.status_code) < 300:
             return True, f"HTTP {r.status_code}"
         return False, f"HTTP {r.status_code}: {r.text[:300]}"
+    except Exception as e:
+        return False, str(e)
+
+
+def init_core_schema(dsn: str, schema_path: str = "") -> tuple[bool, str]:
+    s = str(dsn or "").strip()
+    if not s:
+        return False, "missing dsn"
+
+    candidates: list[Path] = []
+    if str(schema_path or "").strip():
+        candidates.append(Path(str(schema_path).strip()))
+    candidates.extend(
+        [
+            Path("/app/textIngest/schema.sql"),
+            Path(__file__).resolve().parents[2] / "textIngest" / "schema.sql",
+        ]
+    )
+
+    schema_file = next((p for p in candidates if p.exists() and p.is_file()), None)
+    if not schema_file:
+        return False, "schema.sql not found"
+
+    try:
+        sql = schema_file.read_text(encoding="utf-8")
+        with psycopg.connect(s, connect_timeout=15) as conn:
+            conn.execute("SET statement_timeout = '5min'")
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        return True, "schema initialized"
     except Exception as e:
         return False, str(e)

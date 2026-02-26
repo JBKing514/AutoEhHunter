@@ -21,6 +21,13 @@ AUTH_ALLOW_PATHS = {
     "/api/auth/register-admin",
     "/api/auth/login",
 }
+SETUP_OPEN_PATHS = {
+    "/api/config",
+    "/api/config/schema",
+    "/api/setup/status",
+    "/api/setup/validate-db",
+    "/api/setup/validate-lrr",
+}
 RECOVERY_ALLOWED_ENDPOINTS = {
     "/api/config",
     "/api/config/schema",
@@ -93,11 +100,15 @@ async def auth_guard(request: Request, call_next):
                 return await call_next(request)
         dsn = db_dsn()
         if not dsn:
+            if p in SETUP_OPEN_PATHS:
+                return await call_next(request)
             return JSONResponse(status_code=503, content={"detail": "database is not configured"})
         try:
             ensure_auth_schema(dsn)
             st = auth_bootstrap_status(dsn)
         except Exception:
+            if p in SETUP_OPEN_PATHS:
+                return await call_next(request)
             return JSONResponse(status_code=503, content={"detail": "auth service unavailable"})
         if bool(st.get("configured")):
             if not token:

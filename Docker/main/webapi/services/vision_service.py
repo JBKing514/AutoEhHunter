@@ -98,9 +98,19 @@ def _run_cmd(cmd: list[str], env_extra: dict[str, str] | None = None, timeout: i
 def _siglip_pip_cmds() -> list[list[str]]:
     target = str(_runtime_pydeps_dir())
     cmds: list[list[str]] = []
-    torch_cmd = [sys.executable, "-m", "pip", "install", "--target", target]
+    torch_cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--target",
+        target,
+        "--upgrade",
+        "--force-reinstall",
+        "--no-cache-dir",
+    ]
     torch_cmd.extend(["--index-url", "https://download.pytorch.org/whl/cpu"])
-    torch_cmd.append("torch")
+    torch_cmd.extend(["torch", "torchvision"])
     cmds.append(torch_cmd)
     deps_cmd = [
         sys.executable,
@@ -109,6 +119,9 @@ def _siglip_pip_cmds() -> list[list[str]]:
         "install",
         "--target",
         target,
+        "--upgrade",
+        "--force-reinstall",
+        "--no-cache-dir",
         "numpy",
         "transformers",
         "sentencepiece",
@@ -131,6 +144,38 @@ def _run_siglip_pip_cmds(cmds: list[list[str]], env_extra: dict[str, str], timeo
         if rc != 0:
             return rc, "\n".join(all_out), "\n".join(all_err)
     return 0, "\n".join(all_out), "\n".join(all_err)
+
+
+def _verify_siglip_runtime_deps(env_extra: dict[str, str]) -> tuple[bool, str]:
+    py = (
+        "from pathlib import Path; "
+        "import PIL, numpy, torch, transformers; "
+        "lib=Path(torch.__file__).resolve().parent/'lib'/'libtorch_global_deps.so'; "
+        "print('ok' if lib.exists() else f'missing:{lib}')"
+    )
+    rc, out, err = _run_cmd([sys.executable, "-c", py], env_extra=env_extra, timeout=300)
+    text = (out or "") + ("\n" + err if err else "")
+    if rc != 0:
+        return False, text.strip()
+    if "missing:" in text:
+        return False, text.strip()
+    return True, text.strip()
+
+
+def _reinstall_siglip_runtime_deps(env_extra: dict[str, str]) -> None:
+    pydeps = _runtime_pydeps_dir()
+    if pydeps.exists():
+        shutil.rmtree(pydeps, ignore_errors=True)
+    pydeps.mkdir(parents=True, exist_ok=True)
+
+    pip_cmds = _siglip_pip_cmds()
+    rc, out, err = _run_siglip_pip_cmds(pip_cmds, env_extra=env_extra, timeout=7200)
+    if rc != 0:
+        raise RuntimeError(f"pip install failed: {err or out}")
+
+    ok, reason = _verify_siglip_runtime_deps(env_extra)
+    if not ok:
+        raise RuntimeError(f"runtime deps verify failed: {reason}")
 
 
 def _model_status() -> dict[str, Any]:
@@ -166,11 +211,15 @@ def _ensure_siglip_runtime_deps() -> None:
     if not missing:
         return
     env_extra = _siglip_env_extra()
-    pip_cmds = _siglip_pip_cmds()
-    rc, out, err = _run_siglip_pip_cmds(pip_cmds, env_extra=env_extra, timeout=7200)
-    if rc != 0:
-        raise RuntimeError(f"pip install failed for siglip runtime deps: {err or out}")
-    _ensure_runtime_pydeps_path()
+    last_err: Exception | None = None
+    for _ in range(2):
+        try:
+            _reinstall_siglip_runtime_deps(env_extra)
+            _ensure_runtime_pydeps_path()
+            return
+        except Exception as e:
+            last_err = e
+    raise RuntimeError(f"pip install failed for siglip runtime deps: {last_err}")
 
 
 def _set_dl_state(task_id: str, patch: dict[str, Any]) -> None:
@@ -195,12 +244,7 @@ def _download_siglip_worker(task_id: str, model_id: str) -> None:
         siglip_dir = _siglip_root()
         env_extra = _siglip_env_extra()
         env_extra["HF_HUB_DISABLE_TELEMETRY"] = "1"
-        pip_cmds = _siglip_pip_cmds()
-        rc, out, err = _run_siglip_pip_cmds(pip_cmds, env_extra=env_extra, timeout=7200)
-        _append_dl_log(task_id, out[-1200:] if out else "")
-        _append_dl_log(task_id, err[-1200:] if err else "")
-        if rc != 0:
-            raise RuntimeError(f"pip install failed: {err or out}")
+        _reinstall_siglip_runtime_deps(env_extra)
 
         _set_dl_state(task_id, {"progress": 45, "stage": "download_processor"})
         py_p = (

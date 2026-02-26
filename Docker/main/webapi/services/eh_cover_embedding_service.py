@@ -193,45 +193,48 @@ def run_eh_cover_embedding_once(*, include_fail: bool = False, limit: int = 12) 
     completed = 0
     failed = 0
 
-    with psycopg.connect(dsn) as conn:
-        candidates = _pick_candidates(conn, include_fail=include_fail, limit=limit)
-        conn.commit()
-        picked = len(candidates)
-        for item in candidates:
-            gid = int(item.get("gid") or 0)
-            token = str(item.get("token") or "")
-            raw = item.get("raw") or {}
-            thumb = str((raw.get("thumb") if isinstance(raw, dict) else "") or "").strip()
-            referer = str(item.get("eh_url") or item.get("ex_url") or "").strip()
-            try:
-                if not thumb:
-                    thumb, eh_ref, ex_ref = _refresh_thumb_from_api(conn, session, gid, token, timeout_s=timeout_s)
-                    referer = str(eh_ref or ex_ref or referer).strip()
-                    if not thumb:
-                        raise RuntimeError("thumb missing")
-                if sleep_s > 0:
-                    time.sleep(sleep_s)
+    try:
+        with psycopg.connect(dsn) as conn:
+            candidates = _pick_candidates(conn, include_fail=include_fail, limit=limit)
+            conn.commit()
+            picked = len(candidates)
+            for item in candidates:
+                gid = int(item.get("gid") or 0)
+                token = str(item.get("token") or "")
+                raw = item.get("raw") or {}
+                thumb = str((raw.get("thumb") if isinstance(raw, dict) else "") or "").strip()
+                referer = str(item.get("eh_url") or item.get("ex_url") or "").strip()
                 try:
-                    img = _fetch_cover_bytes(session, thumb, referer, timeout_s=timeout_s)
-                except Exception:
-                    refreshed_thumb, eh_ref, ex_ref = _refresh_thumb_from_api(conn, session, gid, token, timeout_s=timeout_s)
-                    if not refreshed_thumb or refreshed_thumb == thumb:
-                        raise
-                    thumb = refreshed_thumb
-                    referer = str(eh_ref or ex_ref or referer).strip()
-                    img = _fetch_cover_bytes(session, thumb, referer, timeout_s=timeout_s)
-                vec = _embed_image_siglip(img, model_id)
-                if not vec:
-                    raise RuntimeError("embedding empty")
-                _mark_success(conn, gid, token, vec)
-                conn.commit()
-                completed += 1
-            except Exception as e:
-                print(f"[eh_cover_embedding] gid={gid} token={token} failed: {e}", file=sys.stderr)
-                print(traceback.format_exc(), file=sys.stderr)
-                _mark_fail(conn, gid, token)
-                conn.commit()
-                failed += 1
+                    if not thumb:
+                        thumb, eh_ref, ex_ref = _refresh_thumb_from_api(conn, session, gid, token, timeout_s=timeout_s)
+                        referer = str(eh_ref or ex_ref or referer).strip()
+                        if not thumb:
+                            raise RuntimeError("thumb missing")
+                    if sleep_s > 0:
+                        time.sleep(sleep_s)
+                    try:
+                        img = _fetch_cover_bytes(session, thumb, referer, timeout_s=timeout_s)
+                    except Exception:
+                        refreshed_thumb, eh_ref, ex_ref = _refresh_thumb_from_api(conn, session, gid, token, timeout_s=timeout_s)
+                        if not refreshed_thumb or refreshed_thumb == thumb:
+                            raise
+                        thumb = refreshed_thumb
+                        referer = str(eh_ref or ex_ref or referer).strip()
+                        img = _fetch_cover_bytes(session, thumb, referer, timeout_s=timeout_s)
+                    vec = _embed_image_siglip(img, model_id)
+                    if not vec:
+                        raise RuntimeError("embedding empty")
+                    _mark_success(conn, gid, token, vec)
+                    conn.commit()
+                    completed += 1
+                except Exception as e:
+                    print(f"[eh_cover_embedding] gid={gid} token={token} failed: {e}", file=sys.stderr)
+                    print(traceback.format_exc(), file=sys.stderr)
+                    _mark_fail(conn, gid, token)
+                    conn.commit()
+                    failed += 1
+    except psycopg.OperationalError:
+        return {"picked": 0, "completed": 0, "failed": 0}
 
     return {"picked": picked, "completed": completed, "failed": failed}
 
@@ -242,6 +245,8 @@ def _worker_loop() -> None:
             stats = run_eh_cover_embedding_once(include_fail=False, limit=10)
             if int(stats.get("picked") or 0) > 0:
                 continue
+        except psycopg.OperationalError:
+            pass
         except Exception as e:
             print(f"[eh_cover_embedding] worker loop error: {e}", file=sys.stderr)
             print(traceback.format_exc(), file=sys.stderr)

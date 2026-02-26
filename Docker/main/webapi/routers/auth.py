@@ -37,15 +37,51 @@ router = APIRouter(tags=["auth"])
 
 
 @router.get("/api/auth/bootstrap")
-def auth_bootstrap() -> dict[str, Any]:
+def auth_bootstrap(request: Request) -> dict[str, Any]:
     dsn = db_dsn()
     if not dsn:
-        raise HTTPException(status_code=503, detail="database is not configured")
+        return {
+            "ok": True,
+            "db_ready": False,
+            "configured": False,
+            "initialized": False,
+            "user_configured": False,
+            "user_count": 0,
+            "is_admin_session": False,
+            "setup_required": True,
+        }
     try:
         st = auth_bootstrap_status(dsn)
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"auth bootstrap failed: {e}")
-    return {"ok": True, **st}
+        return {
+            "ok": True,
+            "db_ready": False,
+            "configured": False,
+            "initialized": False,
+            "user_configured": False,
+            "user_count": 0,
+            "is_admin_session": False,
+            "setup_required": True,
+            "db_error": str(e),
+        }
+
+    token = str(request.cookies.get(AUTH_COOKIE_NAME) or "").strip()
+    is_admin_session = False
+    if token:
+        try:
+            user = auth_get_session_user(dsn, token)
+            role = str((user or {}).get("role") or "").lower()
+            is_admin_session = role == "admin"
+        except Exception:
+            is_admin_session = False
+
+    return {
+        "ok": True,
+        "db_ready": True,
+        **st,
+        "is_admin_session": is_admin_session,
+        "setup_required": not bool(st.get("initialized")),
+    }
 
 
 @router.post("/api/auth/register-admin")
