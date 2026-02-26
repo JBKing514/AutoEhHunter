@@ -11,7 +11,7 @@ from ..services.db_service import db_dsn, query_rows
 from ..services.eh_cover_embedding_service import start_eh_cover_embedding_worker, stop_eh_cover_embedding_worker
 from ..services.schedule_service import sync_scheduler
 from ..services.search_service import _item_from_work
-from ..services.vision_service import warmup_siglip_model, _embed_image_siglip
+from ..services.vision_service import warmup_siglip_model, _embed_image_siglip, siglip_warmup_ready
 
 router = APIRouter(tags=["system"])
 
@@ -54,7 +54,10 @@ def _on_startup() -> None:
     sync_scheduler()
     try:
         cfg, _ = resolve_config()
-        warmup_siglip_model(str(cfg.get("SIGLIP_MODEL") or "google/siglip-so400m-patch14-384"), strict=False)
+        target = str(cfg.get("SIGLIP_MODEL") or "google/siglip-so400m-patch14-384")
+        ready, _reason = siglip_warmup_ready(target)
+        if ready:
+            warmup_siglip_model(target, strict=False, silent_skip=True)
     except Exception:
         pass
     try:

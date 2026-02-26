@@ -7,15 +7,21 @@
       <v-defaults-provider :defaults="wizardFieldDefaults">
       <v-window v-model="step" class="mb-3">
         <v-window-item :value="0">
-          <div class="setup-welcome d-flex flex-column align-center justify-center text-center">
+          <div 
+            class="setup-welcome d-flex flex-column align-center justify-center text-center"
+            @mousemove="onWelcomeMouseMove"
+            @mouseleave="onWelcomeMouseLeave"
+          >
             <div class="hello-cloud" aria-hidden="true">
               <span v-for="(w, idx) in helloCloud" :key="`hello-${idx}`" class="hello-word" :style="helloWordStyle(w)">{{ w.text }}</span>
+            </div>      
+            <div class="setup-welcome-foreground">
+              <img :src="brandLogo" alt="AutoEhHunter" class="setup-welcome-logo mb-4" />
+              <div class="text-h4 font-weight-bold mb-6">AutoEhHunter</div>
+              <v-btn icon size="x-large" color="primary" class="setup-welcome-next" @click="step = 1">
+                <v-icon size="30">mdi-arrow-right</v-icon>
+              </v-btn>
             </div>
-            <img :src="brandLogo" alt="AutoEhHunter" class="setup-welcome-logo mb-4" />
-            <div class="text-h4 font-weight-bold mb-6">AutoEhHunter</div>
-            <v-btn icon size="x-large" color="primary" class="setup-welcome-next" @click="step = 1">
-              <v-icon size="30">mdi-arrow-right</v-icon>
-            </v-btn>
           </div>
         </v-window-item>
 
@@ -189,11 +195,13 @@
   </v-dialog>
 
   <v-dialog v-model="showFirstRunGuide" max-width="760">
-    <v-card class="pa-4" variant="outlined">
+    <v-card class="pa-4 first-run-guide-card" variant="elevated">
       <div class="text-h6 font-weight-bold mb-2">{{ t('setup.after_guide.title') }}</div>
       <div class="text-body-2 text-medium-emphasis mb-4">{{ t('setup.after_guide.desc') }}</div>
       <v-alert type="info" variant="tonal" class="mb-4">{{ t('setup.after_guide.hint') }}</v-alert>
-      <div class="d-flex justify-end ga-2">
+      <div class="d-flex flex-wrap justify-end ga-2">
+        <v-btn color="primary" :loading="firstRunTaskBusy.ehFetch" @click="runFirstRunTask('eh_fetch', 'ehFetch')">{{ t('setup.after_guide.run_eh_fetch') }}</v-btn>
+        <v-btn color="secondary" variant="outlined" :loading="firstRunTaskBusy.ehIngest" @click="runFirstRunTask('eh_ingest', 'ehIngest')">{{ t('setup.after_guide.run_eh_ingest') }}</v-btn>
         <v-btn variant="text" @click="dismissFirstRunGuide">{{ t('setup.after_guide.cancel') }}</v-btn>
         <v-btn color="primary" variant="outlined" @click="openControlAndDismiss">{{ t('setup.after_guide.open_control') }}</v-btn>
       </div>
@@ -205,6 +213,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { completeSetup, getAuthBootstrap, getProviderModels, getSetupStatus, registerAdmin, setCsrfToken, validateSetupDb, validateSetupLrr } from "../api";
 import { useAppStore } from "../stores/appStore";
+import { useControlStore } from "../stores/controlStore";
 import { useLayoutStore } from "../stores/layoutStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import brandLogo from "../ico/AutoEhHunterLogo_128.png";
@@ -213,6 +222,7 @@ import { buildCookie, parseCookie } from "../utils/helpers";
 const { t } = defineProps({ t: { type: Function, required: true } });
 
 const app = useAppStore();
+const control = useControlStore();
 const layout = useLayoutStore();
 const settings = useSettingsStore();
 
@@ -231,23 +241,49 @@ const ehCookieParts = ref({ ipb_member_id: "", ipb_pass_hash: "", sk: "", igneou
 const showFirstRunGuide = ref(false);
 const siglipNoticeArmed = ref(false);
 const lastSiglipStatus = ref("");
+const firstRunTaskBusy = reactive({ ehFetch: false, ehIngest: false });
 const FIRST_RUN_GUIDE_KEY = "aeh_first_run_guide_seen_v1";
 const helloCloudFocus = ref({ x: 50, y: 50 });
+const helloCloudFocusTo = ref({ x: 50, y: 50 });
+const isMouseActive = ref(false);
 let helloCloudRaf = 0;
 let helloCloudT0 = 0;
-const helloCloud = [
-  "Hello", "你好", "こんにちは", "안녕하세요", "Hola", "Bonjour", "Hallo", "Ciao", "Olá", "Привет",
-  "مرحبا", "नमस्ते", "שלום", "สวัสดี", "Xin chao", "Merhaba", "Hej", "Ahoj", "Szia", "Salut",
-  "Sawubona", "Habari", "Jambo", "Konnichiwa", "Selam", "Buna", "Hei", "Moien", "Halo", "Selamat",
-  "Mingalaba", "Shalom", "Kia ora", "Talofa", "Namaskaram", "Vanakkam", "Assalamu alaikum", "Zdravo", "Dobar dan", "God dag",
-  "Yassas", "Halloj", "Tere", "Sveiki", "Labas", "Haloj", "Bok", "Pozdrav", "Servus", "Aloha",
-  "Sannu", "Salve", "Ndewo", "Kamusta", "Marhaba", "Hola a todos",
-].map((text, idx) => ({
-  text,
-  x: ((idx * 37 + 11) % 96) + 2,
-  y: ((idx * 53 + 7) % 86) + 7,
-  base: 12 + (idx % 5) * 2,
-}));
+let mouseTimeout = null;
+const pureHelloWords = [
+  "Hello", "你好", "こんにちは", "안녕하세요", "Bonjour", "Hola", "Hallo", 
+  "Ciao", "Привет", "Olá", "مرحبا", "नमस्ते", "שָׁלוֹם", "Sawubona", 
+  "Merhaba", "Γεια σας", "Hej", "Ahoj", "Hei", "Moi", "Cześć", 
+  "Szia", "Buna", "Salut", "Halo", "Sveiki", "Përshëndetje", 
+  "Aloha", "Kamusta", "Xin chào", "Salam", "Barev", "Kaixo", 
+  "Gamarjoba", "Slav", "Namaste", "Mingalaba", "Sabaidi", 
+  "Sua s'dei", "Kumusta", "Sveiks", "Tere", "Goeiedag", "Dobrý den", 
+  "Halló", "Terve", "Saluton", "God dag", "Ahalan"
+];
+const denseWords = [...pureHelloWords, ...pureHelloWords].sort(() => Math.random() - 0.5);
+const rawCloud = Array.from({ length: denseWords.length }).map((_, idx) => {
+  const cols = 11; 
+  const rows = Math.ceil(denseWords.length / cols);
+  const row = Math.floor(idx / cols);
+  const col = idx % cols;
+  const xOffset = (row % 2 === 0) ? 0 : (100 / cols / 2);
+  const baseX = (col / (cols - 1)) * 120 - 10 + xOffset; 
+  const baseY = (row / (rows - 1)) * 120 - 10;
+  const jx = (Math.random() - 0.5) * 6;
+  const jy = (Math.random() - 0.5) * 6;
+  return {
+    text: denseWords[idx],
+    x: baseX + jx,
+    y: baseY + jy,
+    baseSize: 12 + Math.random() * 4
+  };
+});
+const helloCloud = rawCloud.filter(item => {
+  const dx = Math.abs(item.x - 50);
+  const dy = Math.abs(item.y - 50);
+  const inSafeZone = (dx < 16) && (dy < 22);
+  return !inSafeZone;
+});
+
 const wizardFieldDefaults = {
   VTextField: { variant: "outlined", density: "comfortable", color: "primary" },
   VSelect: { variant: "outlined", density: "comfortable", color: "primary" },
@@ -311,31 +347,58 @@ function syncUiPreview() {
   settings.config.DATA_UI_THEME_OLED = !!setupForm.DATA_UI_THEME_OLED;
 }
 
+function onWelcomeMouseMove(e) {
+  isMouseActive.value = true;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * 100;
+  const y = ((e.clientY - rect.top) / rect.height) * 100;
+  helloCloudFocusTo.value = { x, y };
+
+  clearTimeout(mouseTimeout);
+  mouseTimeout = setTimeout(() => {
+    isMouseActive.value = false;
+  }, 2000);
+}
+
+function onWelcomeMouseLeave() {
+  isMouseActive.value = false;
+}
+
 function helloWordStyle(item) {
-  const fx = helloCloudFocus.value.x;
-  const fy = helloCloudFocus.value.y;
-  const dx = Number(item.x) - Number(fx);
-  const dy = Number(item.y) - Number(fy);
-  const d = Math.sqrt(dx * dx + dy * dy);
-  const k = Math.max(0, 1 - d / 48);
-  const size = Number(item.base) + k * 22;
-  const opacity = 0.08 + k * 0.6;
+  const dx = item.x - helloCloudFocus.value.x;
+  const dy = item.y - helloCloudFocus.value.y;
+  const d = Math.sqrt(dx * dx + (dy * 1.5) * (dy * 1.5));
+  const sigma = 26;
+  const k = Math.exp(-(d * d) / (2 * sigma * sigma));
+  const scale = 0.6 + k * 2.8; 
+  const opacity = 0.08 + k * 0.85; 
+  const zIndex = Math.floor(k * 100); 
+
   return {
     left: `${item.x}%`,
     top: `${item.y}%`,
-    fontSize: `${size.toFixed(1)}px`,
+    fontSize: `${item.baseSize}px`,
     opacity: opacity.toFixed(3),
-    transform: `translate(-50%, -50%) scale(${(0.9 + k * 0.24).toFixed(3)})`,
+    zIndex: zIndex,
+    transform: `translate(-50%, -50%) scale(${scale.toFixed(3)})`,
+    fontWeight: 700,
   };
 }
 
 function _tickHelloCloud(ts) {
   if (!helloCloudT0) helloCloudT0 = ts;
   const t = (ts - helloCloudT0) / 1000;
-  helloCloudFocus.value = {
-    x: 50 + Math.sin(t * 0.32) * 26 + Math.sin(t * 0.11) * 8,
-    y: 50 + Math.cos(t * 0.27) * 20 + Math.sin(t * 0.17) * 6,
-  };
+
+  if (!isMouseActive.value) {
+    const speed = 0.35;
+    helloCloudFocusTo.value = {
+      x: 50 + Math.sin(t * speed) * 35,
+      y: 50 + Math.sin(t * speed * 1.3) * 30,
+    };
+  }
+  helloCloudFocus.value.x += (helloCloudFocusTo.value.x - helloCloudFocus.value.x) * 0.06;
+  helloCloudFocus.value.y += (helloCloudFocusTo.value.y - helloCloudFocus.value.y) * 0.06;
+
   helloCloudRaf = requestAnimationFrame(_tickHelloCloud);
 }
 
@@ -355,6 +418,20 @@ function dismissFirstRunGuide() {
 function openControlAndDismiss() {
   layout.goTab("control");
   dismissFirstRunGuide();
+}
+
+async function runFirstRunTask(taskName, flagKey) {
+  if (!taskName || !Object.prototype.hasOwnProperty.call(firstRunTaskBusy, flagKey)) return;
+  if (firstRunTaskBusy[flagKey]) return;
+  firstRunTaskBusy[flagKey] = true;
+  try {
+    await control.triggerTask(taskName);
+    settings.notify(t("setup.after_guide.task_started", { task: taskName }), "success");
+  } catch (e) {
+    settings.notify(String(e?.response?.data?.detail || e), "warning");
+  } finally {
+    firstRunTaskBusy[flagKey] = false;
+  }
 }
 
 async function refreshCanAbortWizard() {
@@ -476,29 +553,21 @@ watch(
   }),
   (st) => {
     if (!st.status) return;
-    if (!siglipNoticeArmed.value && st.status === "done") {
-      lastSiglipStatus.value = st.status;
-      return;
-    }
-    if (!siglipNoticeArmed.value && st.status === "failed") {
-      lastSiglipStatus.value = st.status;
-      return;
-    }
-    if (lastSiglipStatus.value === st.status && st.status === "done") return;
-    if (lastSiglipStatus.value === st.status && st.status === "failed") return;
-    lastSiglipStatus.value = st.status;
-    if (st.status === "failed") {
-      layout.pushNotice("setup-siglip", t("setup.siglip.notice_title"), t("setup.siglip.notice_failed", { error: st.error || "unknown error" }));
-      settings.notify(t("setup.siglip.failed", { error: st.error || "unknown error" }), "warning");
-      siglipNoticeArmed.value = false;
-      return;
-    }
     if (st.status === "done") {
       siglipNoticeArmed.value = false;
       if (Array.isArray(layout.notices)) {
         const it = layout.notices.find((x) => x.type === "setup-siglip");
         if (it?.id) layout.dismissNotice(it.id);
       }
+      lastSiglipStatus.value = st.status;
+      return;
+    }
+    if (lastSiglipStatus.value === st.status && st.status === "failed") return;
+    lastSiglipStatus.value = st.status;
+    if (st.status === "failed") {
+      layout.pushNotice("setup-siglip", t("setup.siglip.notice_title"), t("setup.siglip.notice_failed", { error: st.error || "unknown error" }));
+      settings.notify(t("setup.siglip.failed", { error: st.error || "unknown error" }), "warning");
+      siglipNoticeArmed.value = false;
       return;
     }
     siglipNoticeArmed.value = true;
@@ -730,8 +799,9 @@ onBeforeUnmount(() => {
 
 .setup-welcome {
   position: relative;
-  min-height: 68vh;
+  min-height: calc(100vh - 90px);
   overflow: hidden;
+  z-index: 1;
 }
 
 .hello-cloud {
@@ -739,14 +809,31 @@ onBeforeUnmount(() => {
   inset: 0;
   pointer-events: none;
   user-select: none;
+  z-index: 0; 
+}
+
+.setup-welcome-foreground {
+  position: relative;
+  z-index: 10; 
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: radial-gradient(closest-side, rgba(var(--v-theme-surface), 0.95) 30%, rgba(var(--v-theme-surface), 0) 100%);
+  padding: 60px 80px;
+  border-radius: 50%;
+  pointer-events: none; 
+}
+.setup-welcome-logo,
+.setup-welcome-next {
+  pointer-events: auto;
 }
 
 .hello-word {
   position: absolute;
-  color: rgba(var(--v-theme-on-surface), 0.35);
-  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 0.85); 
   letter-spacing: 0.02em;
-  transition: transform 320ms ease, opacity 320ms ease, font-size 320ms ease;
+  white-space: nowrap;
+  will-change: transform, opacity; 
 }
 
 .setup-welcome-logo {
@@ -757,6 +844,12 @@ onBeforeUnmount(() => {
 
 .setup-welcome-next {
   box-shadow: 0 10px 26px rgba(var(--v-theme-primary), 0.35);
+}
+
+.first-run-guide-card {
+  background: rgba(var(--v-theme-surface), 0.98);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.14);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.35);
 }
 
 .category-grid {

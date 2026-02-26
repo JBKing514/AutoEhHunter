@@ -439,7 +439,19 @@ def _ensure_siglip_runtime_loaded(model_id: str) -> tuple[Any, Any, Any, Any, st
     return entry["torch"], entry["model"], entry["processor"], entry["tokenizer"], entry["device"]
 
 
-def warmup_siglip_model(model_id: str | None = None, strict: bool = False) -> dict[str, Any]:
+def siglip_warmup_ready(model_id: str | None = None) -> tuple[bool, str]:
+    target = str(model_id or "google/siglip-so400m-patch14-384").strip()
+    st = _model_status()
+    siglip_ok = bool(((st.get("siglip") or {}).get("usable")))
+    deps_ok = bool(((st.get("runtime_deps") or {}).get("ready")))
+    if not deps_ok:
+        return False, "runtime_deps_not_ready"
+    if not siglip_ok:
+        return False, "siglip_model_not_ready"
+    return True, target
+
+
+def warmup_siglip_model(model_id: str | None = None, strict: bool = False, silent_skip: bool = False) -> dict[str, Any]:
     target = str(model_id or "google/siglip-so400m-patch14-384").strip()
     try:
         _ensure_siglip_runtime_loaded(target)
@@ -447,7 +459,8 @@ def warmup_siglip_model(model_id: str | None = None, strict: bool = False) -> di
     except Exception as e:
         if strict:
             raise
-        logger.warning("siglip warmup skipped: %s", e)
+        if not silent_skip:
+            logger.warning("siglip warmup skipped: %s", e)
         return {"ok": False, "model_id": target, "loaded": False, "error": str(e)}
 
 

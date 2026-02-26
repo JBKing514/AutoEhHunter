@@ -582,7 +582,22 @@ export const useSettingsStore = defineStore("settings", () => {
         if (st.status === "done" || st.status === "failed") {
           clearInterval(siglipPollTimer);
           siglipPollTimer = null;
-          notify(st.status === "done" ? t("settings.model.siglip_downloaded") : String(st.error || "download failed"), st.status === "done" ? "success" : "warning");
+          if (st.status === "failed") {
+            notify(String(st.error || "download failed"), "warning");
+          }
+          if (st.status === "done") {
+            setTimeout(() => {
+              if (String(siglipDownload.value.task_id || "") !== String(taskId)) return;
+              if (String(siglipDownload.value.status || "") !== "done") return;
+              siglipDownload.value = {
+                ...siglipDownload.value,
+                status: "",
+                stage: "",
+                error: "",
+                logs: [],
+              };
+            }, 1200);
+          }
         }
       } catch {
         // ignore
