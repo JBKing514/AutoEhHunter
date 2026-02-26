@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 from fastapi import Request, Response
@@ -49,13 +50,21 @@ def _auth_cookie_secure(cfg: dict[str, Any] | None = None) -> bool:
     return _as_bool(src.get("AUTH_COOKIE_SECURE"), False)
 
 
+def _auth_cookie_samesite() -> str:
+    raw = str(os.getenv("DATA_UI_AUTH_COOKIE_SAMESITE", "strict") or "").strip().lower()
+    if raw in {"strict", "lax", "none"}:
+        return raw
+    return "strict"
+
+
 def _auth_set_cookie(resp: Response, token: str, cfg: dict[str, Any], csrf_token: str = "") -> None:
+    samesite = _auth_cookie_samesite()
     resp.set_cookie(
         key=AUTH_COOKIE_NAME,
         value=token,
         httponly=True,
         secure=_auth_cookie_secure(cfg),
-        samesite="lax",
+        samesite=samesite,
         max_age=_auth_ttl_hours(cfg) * 3600,
         path="/",
     )
@@ -65,15 +74,16 @@ def _auth_set_cookie(resp: Response, token: str, cfg: dict[str, Any], csrf_token
             value=str(csrf_token),
             httponly=False,
             secure=_auth_cookie_secure(cfg),
-            samesite="lax",
+            samesite=samesite,
             max_age=_auth_ttl_hours(cfg) * 3600,
             path="/",
         )
 
 
 def _auth_clear_cookie(resp: Response, cfg: dict[str, Any]) -> None:
-    resp.delete_cookie(key=AUTH_COOKIE_NAME, path="/", samesite="lax", secure=_auth_cookie_secure(cfg))
-    resp.delete_cookie(key=AUTH_CSRF_COOKIE_NAME, path="/", samesite="lax", secure=_auth_cookie_secure(cfg))
+    samesite = _auth_cookie_samesite()
+    resp.delete_cookie(key=AUTH_COOKIE_NAME, path="/", samesite=samesite, secure=_auth_cookie_secure(cfg))
+    resp.delete_cookie(key=AUTH_CSRF_COOKIE_NAME, path="/", samesite=samesite, secure=_auth_cookie_secure(cfg))
 
 
 async def auth_guard(request: Request, call_next):
