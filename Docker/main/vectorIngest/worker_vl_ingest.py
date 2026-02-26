@@ -111,6 +111,22 @@ def _arg_present(argv: list[str], opt: str) -> bool:
     return opt in argv
 
 
+def _normalize_openai_v1_base(base_url: str) -> str:
+    base = str(base_url or "").strip().rstrip("/")
+    if not base:
+        return ""
+    if not urlparse(base).scheme:
+        base = f"http://{base}"
+    for suffix in ("/chat/completions", "/embeddings", "/models"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    base = base.rstrip("/")
+    if not base.endswith("/v1"):
+        base = f"{base}/v1"
+    return base
+
+
 def _vector_literal(vec: list[float]) -> str:
     # pgvector accepts: '[1,2,3]'
     # Keep it compact; avoid scientific notation pitfalls by using repr.
@@ -292,6 +308,9 @@ class OpenAICompatClient:
     retry_attempts: int = 4
     retry_base_s: float = 1.0
     retry_max_s: float = 20.0
+
+    def __post_init__(self) -> None:
+        self.base_url = _normalize_openai_v1_base(self.base_url)
 
     def _headers(self) -> dict[str, str]:
         h = {"Content-Type": "application/json"}
