@@ -31,7 +31,7 @@ Developing this project is not to pitch an "ultimate artifact" to the masses, bu
 Abandoning simple linear scoring mechanisms, the system adopts a recommendation algorithm inspired by physical energy models.
 * **Principle**: The user's reading history (like/dislike/reading duration) is treated as "gravity sources" or "repulsion sources" in the vector space. During runtime, the algorithm dynamically fuses visual vectors (SigLIP), semantic vectors (BGE-M3, etc.), and metadata, introducing Interaction Decay Factors (e.g., impression penalty and misclick penalty). The system calculates the "potential energy" of candidate works in the current user's feature field and introduces Thermal Jitter based on the Boltzmann distribution for sampling. Works with lower potential energy (better fit) have a higher probability of being drawn, achieving a highly dynamic balance between personalized recommendation and exploratory discovery.
 
-### 2. Academic-Grade XP Clustering Analysis
+### 2. Academic-Grade Preferences Clustering Analysis
 
 <p align="center">
   <img src="Media/diagram/AutoEhHunter_3dpca.png" width="800" alt="AutoEhHunter_Ico">
