@@ -9,7 +9,6 @@
 * **Note**: LLM connection is optional; when unconfigured, the system can still run SigLIP-based visual retrieval, cluster recommendations, and basic data pipelines.
 
 ## 1. Basic Steps
-The following are manual deployment steps. Docker Hub images will be provided upon release to simplify the deployment process.
 1. **Clone the Project**
    ```bash
    git clone https://github.com/JBKing514/AutoEhHunter.git

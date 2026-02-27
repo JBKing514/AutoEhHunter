@@ -11,16 +11,7 @@ This image packages data-plane scripts:
 - `webapi/main.py` (FastAPI backend for Data UI)
 - `webapp/` (Vue frontend for Data UI)
 
-## 1) Prepare env
-
-No directory rename is required (`main` -> `data` is obsolete). The build now uses `Docker/main` directly.
-
-```bash
-cp Docker/main/.env.example Docker/.env
-# edit Docker/.env
-```
-
-## 2) Build image
+## 1) Build image
 
 ```bash
 docker build -t autoeh-data:local -f Docker/main/Dockerfile Docker
@@ -61,7 +52,7 @@ docker run -d \
 `data-ui` can trigger compute scripts (`run_worker.sh`, `run_eh_ingest.sh`, `run_daily.sh`) via `docker exec`,
 so Docker socket mount is required and `COMPUTE_CONTAINER_NAME` must match your compute container.
 
-## 3) Run commands
+## 2) Run commands
 
 Fetch EH URLs into PostgreSQL queue table (`eh_queue`):
 

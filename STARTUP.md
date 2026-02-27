@@ -9,7 +9,6 @@
 * **说明**：LLM 连接是可选项；未配置时系统仍可运行基于 SigLIP 的视觉检索、聚类推荐及基础的数据链路。
 
 ## 1. 基础步骤
-以下为手动部署步骤，发布时会提供Docker Hub镜像以简化部署流程。
 1. **克隆项目**
    ```bash
    git clone https://github.com/JBKing514/AutoEhHunter.git

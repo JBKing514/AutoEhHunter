@@ -1,10 +1,7 @@
 services:
   data-ui:
-    image: autoeh-data:local
-    build:
-      context: ./main
-      dockerfile: Dockerfile
-    container_name: autoeh-data-ui
+    image: jbking114514/autoehhunter:latest
+    container_name: autoehhunter
     command: ["data-ui"]
     ports:
       - "8501:8501"
