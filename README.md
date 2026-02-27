@@ -104,14 +104,15 @@ AutoEhHunter 是一个运行于本地的检索增强生成（RAG）与用户偏�
 * **单端点模式**：配置一个强大的 `/v1` 端点（如大型 vLLM 实例），同时承担 图像描述生成(VL) + 语义向量(Embedding) + 对话交互(LLM)。
 * **双/多端点模式**：
   * `INGEST_API_BASE` (入库通道)：专用于画廊的元数据与图像清洗（VL/Embedding），可配置专用的轻量化模型。
-  * `LLM_API_BASE` (交互通道)：用于 Agent 聊天、XP 解析报告、搜索意图路由（可对接其他本地高智商闭源模型）。
+  * `LLM_API_BASE` (交互通道)：用于 Agent 聊天、XP 解析报告、搜索意图路由（可对接其他本地高智商开源模型）。
 * **最小实践建议**：一个 `/v1` 端点（Ollama，LM Studio 等）装载一个 4B 级别的 VL 模型以及 BGE-M3 模型。模型规模本身没有限制，但太小的模型可能会生成不准确的视觉描述和低质量的 Agent 文本，请自行斟酌。
 * **隐私与审查限制**：基于本项目数据的敏感性，极不建议使用云端 API；且带审查的模型（非 abliterated 模型）可能会频繁触发安全限制，影响入库文本描述精度和 Agent 性格。
 
 **快速启动：**
-1. 准备一份标准的 `docker-compose.yml`（参考 `/docs/docker-compose.example.yml`）。
-2. 执行 `docker-compose up -d`。
-3. 访问 `http://<你的IP>:<端口>`，跟随屏幕上丝滑的 **Setup Wizard（初始向导）** 填写数据库和 API 信息即可，无需手动修改任何 `.env` 文件。
+1. 克隆本仓库 `git clone https://github.com/JBKing514/AutoEhHunter`
+2. 进入项目目录 `cd AutoEhHunter`
+3. 执行 `docker-compose -f Docker/quick_deploy_docker-compose.yml up -d` 来拉起AutoEhHunter，PostgreSQL（pgvector17）和LANraragi容器。
+4. 访问 `http://<你的IP>:8501`，跟随屏幕上丝滑的 **Setup Wizard（初始向导）** 填写数据库和 API 信息即可，无需手动修改任何 `.env` 文件。
 
 > 详细的部署说明、代理配置与进阶网络（Macvlan/Gluetun）设置，请参阅 [**STARTUP.md**](STARTUP.md)。
 

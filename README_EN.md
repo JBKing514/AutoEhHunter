@@ -106,14 +106,15 @@ This system provides highly flexible routing configurations for Large Language M
 * **Single Endpoint Mode**: Configure a powerful `/v1` endpoint (like a large vLLM instance) to handle Image Description Generation (VL) + Semantic Vectors (Embedding) + Conversational Interaction (LLM) simultaneously.
 * **Split/Multi-Endpoint Mode**:
   * `INGEST_API_BASE` (Ingestion Channel): Dedicated to gallery metadata and image processing (VL/Embedding). Can be configured with dedicated lightweight models.
-  * `LLM_API_BASE` (Interaction Channel): Used for Agent chat, XP analysis reports, and search intent routing (can be connected to other local high-IQ closed-source models).
+  * `LLM_API_BASE` (Interaction Channel): Used for Agent chat, XP analysis reports, and search intent routing (can be connected to other local high-IQ open-weight models).
 * **Minimum Practical Suggestion**: A `/v1` endpoint (Ollama, LM Studio, etc.) loaded with a 4B parameter VL model and a BGE-M3 model. There is no strict limit on model size, but models that are too small may generate inaccurate visual descriptions and low-quality Agent text. Please consider this carefully.
 * **Privacy & Censorship Limits**: Due to the sensitive nature of this project's data, using cloud-based APIs is highly discouraged; additionally, censored models (non-abliterated models) may frequently trigger safety limits, affecting the accuracy of ingestion text descriptions and Agent persona.
 
 **Quick Start:**
-1. Prepare a standard `docker-compose.yml` (refer to `/docs/docker-compose.example.yml`).
-2. Run `docker-compose up -d`.
-3. Visit `http://<Your IP>:<Port>` and follow the smooth **Setup Wizard** on the screen to fill in the database and API information. No manual modification of `.env` files is needed.
+1. Clone this repo `git clone https://github.com/JBKing514/AutoEhHunter`
+2. Enter the repo directory `cd AutoEhHunter`
+3. Execute `docker-compose -f Docker/quick_deploy_docker-compose.yml up -d` to depoly AutoEhHunter, PostgreSQL(Pgvector17) and LANraragi container.
+4. Visit `http://<Your IP>:8501` and follow the smooth **Setup Wizard** on the screen to fill in the database and API information. No manual modification of `.env` files is needed.
 
 > For detailed deployment instructions, proxy configurations, and advanced network settings (Macvlan/Gluetun), please refer to [**STARTUP_EN.md**](STARTUP_EN.md).
 

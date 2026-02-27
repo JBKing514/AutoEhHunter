@@ -2,18 +2,10 @@ services:
   data-ui:
     image: autoeh-data:local
     build:
-      context: .
-      dockerfile: main/Dockerfile
+      context: ./main
+      dockerfile: Dockerfile
     container_name: autoeh-data-ui
     command: ["data-ui"]
-    environment:
-      POSTGRES_HOST: ${POSTGRES_HOST:-pg17}
-      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      POSTGRES_DB: ${POSTGRES_DB:-lrr_library}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      LRR_BASE: ${LRR_BASE:-http://lanraragi:3000}
-      DATA_UI_TIMEZONE: ${DATA_UI_TIMEZONE:-Asia/Shanghai}
     ports:
       - "8501:8501"
     volumes:
