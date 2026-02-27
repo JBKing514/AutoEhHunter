@@ -116,6 +116,7 @@ This system provides highly flexible routing configurations for Large Language M
 3. Execute `docker-compose -f Docker/quick_deploy_docker-compose.yml up -d` to depoly AutoEhHunter, PostgreSQL(Pgvector17) and LANraragi container.
 4. Visit `http://<Your IP>:8501` and follow the smooth **Setup Wizard** on the screen to fill in the database and API information. No manual modification of `.env` files is needed.
 
+> You can also download `quick_deploy_docker-compose.yml` only for quick startup, currently the project has migrated to Dockerhub and no need for build image locally.
 > For detailed deployment instructions, proxy configurations, and advanced network settings (Macvlan/Gluetun), please refer to [**STARTUP_EN.md**](STARTUP_EN.md).
 
 ---
