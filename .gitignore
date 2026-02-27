@@ -45,6 +45,7 @@ build/
 dist/
 astrbot-dashboard/
 Suwayomi-Server-master/
+komga-master/
 
 # --- Companion Android/Kotlin build outputs ---
 Companion/**/build/

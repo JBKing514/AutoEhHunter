@@ -18,6 +18,7 @@
       <v-tab value="search" :to="{ name: 'settings-search' }">{{ t("settings.tab.search") }}</v-tab>
       <v-tab value="recommend" :to="{ name: 'settings-recommend' }">{{ t("settings.tab.recommend") }}</v-tab>
       <v-tab value="llm" :to="{ name: 'settings-llm' }">{{ t("settings.tab.llm") }}</v-tab>
+      <v-tab value="reader" :to="{ name: 'settings-reader' }">{{ t("settings.tab.reader") }}</v-tab>
       <v-tab value="plugins" :to="{ name: 'settings-plugins' }">{{ t("settings.tab.plugins") }}</v-tab>
       <v-tab value="other" :to="{ name: 'settings-other' }">{{ t("settings.tab.other") }}</v-tab>
       <v-tab v-if="config.DATA_UI_DEVELOPER_MODE" value="developer" :to="{ name: 'settings-developer' }">{{ t("settings.tab.developer") }}</v-tab>

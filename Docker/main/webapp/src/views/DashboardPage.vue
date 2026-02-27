@@ -72,6 +72,7 @@
             <div class="d-flex align-center justify-space-between flex-wrap ga-2 home-tab-row" :class="{ 'home-tab-row-mobile': isMobile }">
               <v-tabs v-model="homeTab" density="compact" color="primary">
                 <v-tab value="recommend" class="font-weight-bold">{{ t('home.tab.recommend') }}</v-tab>
+                <v-tab value="local" class="font-weight-bold">{{ t('home.tab.local') }}</v-tab>
                 <v-tab value="history" class="font-weight-bold">{{ t('home.tab.history') }}</v-tab>
                 <v-tab value="search" class="font-weight-bold">{{ t('home.tab.search') }}</v-tab>
               </v-tabs>
@@ -99,7 +100,17 @@
             </div>
             
             <div v-if="homeTab === 'recommend'" class="text-caption text-medium-emphasis mt-2">
-              {{ t('home.recommend.longpress_dislike') }}
+              <div class="d-flex align-center justify-space-between flex-wrap ga-2">
+                <span>{{ t('home.recommend.longpress_dislike') }}</span>
+                <v-switch
+                  v-model="config.REC_SHOW_PAGE_COUNT"
+                  density="compact"
+                  inset
+                  hide-details
+                  color="primary"
+                  :label="t('home.recommend.show_page_count')"
+                />
+              </div>
             </div>
           </v-card>
 
@@ -178,8 +189,8 @@
                         <v-icon v-else size="30">mdi-image-outline</v-icon>
                         <div class="cover-guard" @contextmenu.prevent />
                         <div v-if="isRecommendDisliked(item)" class="dislike-mask"><v-icon size="40">mdi-thumb-down</v-icon></div>
-                        <div v-if="categoryLabel(item)" class="cat-badge" :style="categoryBadgeStyle(item)">{{ categoryLabel(item) }}</div>
-                      </div>
+                         <div v-if="categoryLabel(item)" class="cat-badge" :style="categoryBadgeStyle(item)">{{ categoryLabel(item) }}</div>
+                       </div>
                       <div v-if="homeViewMode === 'compact'" class="cover-title-overlay">{{ getGalleryTitle(item) }}</div>
                     </div>
                     <div v-if="homeViewMode !== 'compact'" class="pa-2">
@@ -192,6 +203,18 @@
                   <div class="hover-cover-wrap mb-2" @contextmenu.prevent>
                     <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="hover-cover" draggable="false" @dragstart.prevent @error="onImageError(item)" />
                     <div v-else class="hover-cover hover-fallback"><v-icon size="42">mdi-image-outline</v-icon></div>
+                    <div
+                      v-if="item.source === 'works' && item.arcid && !config.READER_HIDE_START_BUTTON"
+                      class="reader-start-overlay"
+                    >
+                      <v-btn
+                        icon="mdi-play"
+                        color="grey-lighten-1"
+                        variant="flat"
+                        class="reader-start-play"
+                        @click.stop="startReader(item)"
+                      />
+                    </div>
                     <div class="hover-dislike-banner">
                       <v-btn size="small" color="warning" variant="flat" prepend-icon="mdi-thumb-down-outline" @click.stop="markRecommendDislike(item)">{{ t('home.recommend.dislike_action') }}</v-btn>
                     </div>
@@ -226,6 +249,18 @@
               <div class="hover-cover-wrap mb-2" @contextmenu.prevent>
                 <img v-if="mobilePreviewItem.thumb_url" :src="mobilePreviewItem.thumb_url" alt="cover" class="hover-cover" draggable="false" @dragstart.prevent @error="onImageError(mobilePreviewItem)" />
                 <div v-else class="hover-cover hover-fallback"><v-icon size="42">mdi-image-outline</v-icon></div>
+                <div
+                  v-if="mobilePreviewItem.source === 'works' && mobilePreviewItem.arcid && !config.READER_HIDE_START_BUTTON"
+                  class="reader-start-overlay"
+                >
+                  <v-btn
+                    icon="mdi-play"
+                    color="grey-lighten-1"
+                    variant="flat"
+                    class="reader-start-play"
+                    @click.stop="startReader(mobilePreviewItem)"
+                  />
+                </div>
                 <div class="hover-dislike-banner">
                   <v-btn size="small" color="warning" variant="flat" prepend-icon="mdi-thumb-down-outline" @click="markRecommendDislike(mobilePreviewItem)">{{ t('home.recommend.dislike_action') }}</v-btn>
                 </div>
@@ -392,6 +427,16 @@ export default {
     },
   },
   methods: {
+    startReader(item) {
+      const arcid = String(item?.arcid || "").trim();
+      if (!arcid) return;
+      this.mobilePreviewItem = null;
+      this.$router.push({
+        name: "reader",
+        params: { arcid },
+        query: { page: "1" },
+      }).catch(() => null);
+    },
     onImageError(item) {
       if (!item || !item.thumb_url || item._is_retrying) return;
       if (item._retries === undefined) item._retries = 0;
@@ -435,5 +480,24 @@ export default {
 
 .home-tab-row-mobile .home-view-toggle {
   margin: 0 auto;
+}
+
+.reader-start-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.reader-start-play {
+  pointer-events: auto;
+  opacity: 0.32;
+  width: 44%;
+  max-width: 180px;
+  min-width: 96px;
+  aspect-ratio: 1 / 1;
+  border-radius: 9999px;
 }
 </style>

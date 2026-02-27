@@ -1,7 +1,7 @@
 <template>
   <div v-if="ui.t">
     <app-sidebar
-      v-if="!appStore.isRecoveryMode"
+      v-if="!appStore.isRecoveryMode && !hideReaderChrome"
       :model-value="ui.drawer"
       :rail="ui.rail"
       :brand-logo="ui.brandLogo"
@@ -14,6 +14,7 @@
     />
 
     <app-top-bar
+      v-if="!hideReaderChrome"
       :current-title-key="ui.currentTitleKey"
       :theme-mode-icon="ui.themeModeIcon"
       :lang-options="ui.langOptions"
@@ -22,6 +23,7 @@
       :page-zoom="ui.pageZoom"
       :notices="ui.notices"
       :auth-user="appStore.authUser"
+      :safe-area-top-inset="settingsStore.config?.READER_VIEWPORT_FIT_COVER !== false"
       :t="ui.t"
       @toggle-drawer="ui.drawer = !ui.drawer"
       @cycle-theme="ui.cycleThemeMode"
@@ -34,18 +36,19 @@
     />
 
     <v-main>
-      <v-container fluid :class="['pa-6', ui.tab === 'chat' ? 'chat-page-container' : '']">
+      <v-container fluid :class="[hideReaderChrome ? 'pa-0' : 'pa-6', ui.tab === 'chat' ? 'chat-page-container' : '']">
         <RouterView />
       </v-container>
     </v-main>
 
-    <div v-if="ui.tab === 'dashboard' && dashboardStore.showScrollQuickActions" class="quick-fab-wrap" :style="dashboardStore.quickFabStyle">
+    <div v-if="!hideReaderChrome && ui.tab === 'dashboard' && dashboardStore.showScrollQuickActions" class="quick-fab-wrap" :style="dashboardStore.quickFabStyle">
       <v-btn color="secondary" icon="mdi-magnify" size="large" class="quick-fab" @click="dashboardStore.quickSearchOpen = true" />
       <v-btn color="info" icon="mdi-filter-variant" size="large" class="quick-fab" @click="dashboardStore.homeFiltersOpen = true" />
       <v-btn color="primary" icon="mdi-arrow-up" size="large" class="quick-fab" @click="dashboardStore.scrollToTop" />
     </div>
 
     <chat-fab-panel
+      v-if="!hideReaderChrome"
       :llm-ready="settingsStore.llmReady"
       :tab="ui.tab"
       :chat-fab-open="chatStore.chatFabOpen"
@@ -68,6 +71,8 @@
 </template>
 
 <script setup>
+import { computed } from "vue";
+import { useRoute } from "vue-router";
 import { useLayoutStore } from "../stores/layoutStore";
 import { useDashboardStore } from "../stores/dashboardStore";
 import { useChatStore } from "../stores/chatStore";
@@ -82,4 +87,10 @@ const dashboardStore = useDashboardStore();
 const chatStore = useChatStore();
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
+const route = useRoute();
+
+const hideReaderChrome = computed(() => {
+  if (route.name !== "reader") return false;
+  return settingsStore.config?.READER_HIDE_APP_UI !== false;
+});
 </script>

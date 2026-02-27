@@ -120,6 +120,55 @@ def home_history(
     }
 
 
+@router.get("/api/home/local")
+def home_local(
+    cursor: str = Query(default=""),
+    limit: int = Query(default=24, ge=1, le=80),
+) -> dict[str, Any]:
+    cursor_ts = None
+    cursor_arcid = ""
+    if cursor:
+        parts = str(cursor).split("|", 1)
+        if len(parts) == 2:
+            try:
+                cursor_ts = int(parts[0])
+                cursor_arcid = str(parts[1])
+            except Exception:
+                cursor_ts = None
+                cursor_arcid = ""
+
+    where = ""
+    params: list[Any] = []
+    if cursor_ts is not None:
+        where = (
+            "WHERE (COALESCE(w.lastreadtime, w.date_added, w.eh_posted, 0) < %s "
+            "OR (COALESCE(w.lastreadtime, w.date_added, w.eh_posted, 0) = %s AND w.arcid < %s))"
+        )
+        params.extend([int(cursor_ts), int(cursor_ts), cursor_arcid])
+
+    sql = (
+        "SELECT w.arcid, w.title, w.tags, w.eh_posted, w.date_added, w.lastreadtime "
+        "FROM works w "
+        f"{where} "
+        "ORDER BY COALESCE(w.lastreadtime, w.date_added, w.eh_posted, 0) DESC, w.arcid DESC LIMIT %s"
+    )
+    params.append(int(limit))
+    rows = query_rows(sql, tuple(params))
+    cfg, _ = resolve_config()
+    items = [_item_from_work(r, cfg) for r in rows]
+    next_cursor = ""
+    if len(rows) >= int(limit):
+        last = rows[-1]
+        last_ts = int(last.get("lastreadtime") or last.get("date_added") or last.get("eh_posted") or 0)
+        next_cursor = f"{last_ts}|{str(last.get('arcid') or '')}"
+    return {
+        "items": items,
+        "next_cursor": next_cursor,
+        "has_more": bool(next_cursor),
+        "meta": {"mode": "local"},
+    }
+
+
 @router.get("/", include_in_schema=False)
 def index() -> FileResponse:
     idx = STATIC_DIR / "index.html"

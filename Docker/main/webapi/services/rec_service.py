@@ -472,7 +472,7 @@ def _build_recommendation_items(
     now_ep = int(time.time())
     start_ep = now_ep - rec_hours * 3600
     candidates = query_rows(
-        "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted, "
+        "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted, filecount, "
         "cover_embedding::text as cover_vec "
         "FROM eh_works WHERE posted IS NOT NULL AND posted >= %s AND posted < %s "
         "ORDER BY posted DESC LIMIT %s",
