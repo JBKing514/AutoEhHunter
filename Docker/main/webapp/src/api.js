@@ -256,6 +256,11 @@ export async function getHomeHistory(params = {}) {
   return data;
 }
 
+export async function getHomeLocal(params = {}) {
+  const { data } = await api.get("/home/local", { params });
+  return data;
+}
+
 export async function getHomeRecommend(params = {}) {
   const { data } = await api.get("/home/recommend", { params });
   return data;
@@ -335,6 +340,11 @@ export async function searchByImageUpload(file, payload = {}) {
 
 export async function getHomeTagSuggest(params = {}) {
   const { data } = await api.get("/home/filter/tag-suggest", { params });
+  return data;
+}
+
+export async function getReaderManifest(arcid) {
+  const { data } = await api.get(`/reader/${encodeURIComponent(String(arcid || ""))}/manifest`);
   return data;
 }
 

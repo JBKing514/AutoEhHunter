@@ -443,6 +443,28 @@ export const useSettingsStore = defineStore("settings", () => {
     if (!config.value.MEMORY_SHORT_TERM_LIMIT) config.value.MEMORY_SHORT_TERM_LIMIT = 12;
     if (config.value.MEMORY_LONG_TERM_TOP_TAGS === undefined || config.value.MEMORY_LONG_TERM_TOP_TAGS === null || config.value.MEMORY_LONG_TERM_TOP_TAGS === "") config.value.MEMORY_LONG_TERM_TOP_TAGS = 8;
     if (config.value.MEMORY_SEMANTIC_TOP_FACTS === undefined || config.value.MEMORY_SEMANTIC_TOP_FACTS === null || config.value.MEMORY_SEMANTIC_TOP_FACTS === "") config.value.MEMORY_SEMANTIC_TOP_FACTS = 8;
+    if (!config.value.READER_DIRECTION) config.value.READER_DIRECTION = "ltr";
+    if (!config.value.READER_MODE) config.value.READER_MODE = "paged";
+    if (!config.value.READER_FIT_MODE) config.value.READER_FIT_MODE = "contain";
+    if (!config.value.READER_WHEEL_POSITION) config.value.READER_WHEEL_POSITION = "bottom";
+    if (config.value.READER_SWIPE_ENABLED === undefined) config.value.READER_SWIPE_ENABLED = true;
+    if (config.value.READER_TAP_TO_TURN === undefined) config.value.READER_TAP_TO_TURN = true;
+    if (config.value.READER_PAGE_ANIM_ENABLED === undefined) config.value.READER_PAGE_ANIM_ENABLED = true;
+    if (config.value.READER_HIDE_START_BUTTON === undefined) config.value.READER_HIDE_START_BUTTON = false;
+    if (config.value.READER_HIDE_APP_UI === undefined) config.value.READER_HIDE_APP_UI = true;
+    if (config.value.READER_VIEWPORT_FIT_COVER === undefined) config.value.READER_VIEWPORT_FIT_COVER = true;
+    if (config.value.READER_WHEEL_CURVE === undefined || config.value.READER_WHEEL_CURVE === null || config.value.READER_WHEEL_CURVE === "") {
+      const legacyRadius = Number(config.value.READER_WHEEL_RADIUS ?? 320);
+      const minR = 120;
+      const maxR = 1000000;
+      const safeR = Number.isFinite(legacyRadius) ? Math.max(minR, Math.min(maxR, legacyRadius)) : 320;
+      const mapped = Math.round((Math.log(safeR / minR) / Math.log(maxR / minR)) * 100);
+      config.value.READER_WHEEL_CURVE = Math.max(0, Math.min(100, mapped));
+    }
+    if (config.value.REC_SHOW_PAGE_COUNT === undefined) config.value.REC_SHOW_PAGE_COUNT = true;
+    if (config.value.READER_PRELOAD_COUNT === undefined || config.value.READER_PRELOAD_COUNT === null || config.value.READER_PRELOAD_COUNT === "") {
+      config.value.READER_PRELOAD_COUNT = 2;
+    }
     if (typeof Intl.supportedValuesOf === "function") {
       try {
         const zones = Intl.supportedValuesOf("timeZone");
@@ -781,6 +803,14 @@ export const useSettingsStore = defineStore("settings", () => {
   watch(() => config.value.REC_IMPRESSION_PENALTY_PCT, () => {
     const v = Number(config.value.REC_IMPRESSION_PENALTY_PCT ?? 3);
     config.value.REC_IMPRESSION_PENALTY_PCT = Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : 3;
+  });
+  watch(() => config.value.READER_PRELOAD_COUNT, () => {
+    const v = Number(config.value.READER_PRELOAD_COUNT ?? 2);
+    config.value.READER_PRELOAD_COUNT = Number.isFinite(v) ? Math.max(0, Math.min(4, Math.round(v))) : 2;
+  });
+  watch(() => config.value.READER_WHEEL_CURVE, () => {
+    const v = Number(config.value.READER_WHEEL_CURVE ?? 55);
+    config.value.READER_WHEEL_CURVE = Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : 55;
   });
 
   watch(() => config.value.DATA_UI_DEVELOPER_MODE, (enabled) => {

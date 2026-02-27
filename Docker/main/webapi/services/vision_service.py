@@ -21,6 +21,7 @@ _siglip_runtime: dict[str, Any] = {}
 # Per-model loading events: other threads wait on the Event instead of
 # triggering a second load.  Keyed by model_id.
 _siglip_loading_events: dict[str, threading.Event] = {}
+_siglip_pydeps_install_lock = threading.Lock()
 
 
 def _now_iso() -> str:
@@ -108,8 +109,10 @@ def _siglip_pip_cmds() -> list[list[str]]:
         "--upgrade",
         "--force-reinstall",
         "--no-cache-dir",
+        "--only-binary",
+        ":all:",
     ]
-    torch_cmd.extend(["--index-url", "https://download.pytorch.org/whl/cpu"])
+    torch_cmd.extend(["--extra-index-url", "https://download.pytorch.org/whl/cpu"])
     torch_cmd.extend(["torch", "torchvision"])
     cmds.append(torch_cmd)
     deps_cmd = [
@@ -122,6 +125,8 @@ def _siglip_pip_cmds() -> list[list[str]]:
         "--upgrade",
         "--force-reinstall",
         "--no-cache-dir",
+        "--only-binary",
+        ":all:",
         "numpy",
         "transformers",
         "sentencepiece",
@@ -163,19 +168,20 @@ def _verify_siglip_runtime_deps(env_extra: dict[str, str]) -> tuple[bool, str]:
 
 
 def _reinstall_siglip_runtime_deps(env_extra: dict[str, str]) -> None:
-    pydeps = _runtime_pydeps_dir()
-    if pydeps.exists():
-        shutil.rmtree(pydeps, ignore_errors=True)
-    pydeps.mkdir(parents=True, exist_ok=True)
+    with _siglip_pydeps_install_lock:
+        pydeps = _runtime_pydeps_dir()
+        if pydeps.exists():
+            shutil.rmtree(pydeps, ignore_errors=True)
+        pydeps.mkdir(parents=True, exist_ok=True)
 
-    pip_cmds = _siglip_pip_cmds()
-    rc, out, err = _run_siglip_pip_cmds(pip_cmds, env_extra=env_extra, timeout=7200)
-    if rc != 0:
-        raise RuntimeError(f"pip install failed: {err or out}")
+        pip_cmds = _siglip_pip_cmds()
+        rc, out, err = _run_siglip_pip_cmds(pip_cmds, env_extra=env_extra, timeout=7200)
+        if rc != 0:
+            raise RuntimeError(f"pip install failed: {err or out}")
 
-    ok, reason = _verify_siglip_runtime_deps(env_extra)
-    if not ok:
-        raise RuntimeError(f"runtime deps verify failed: {reason}")
+        ok, reason = _verify_siglip_runtime_deps(env_extra)
+        if not ok:
+            raise RuntimeError(f"runtime deps verify failed: {reason}")
 
 
 def _model_status() -> dict[str, Any]:
@@ -204,22 +210,42 @@ def _model_status() -> dict[str, Any]:
     }
 
 
-def _ensure_siglip_runtime_deps() -> None:
+def _check_torch_runtime() -> tuple[bool, str]:
+    try:
+        import importlib
+
+        torch = importlib.import_module("torch")
+        c_mod = importlib.import_module("torch._C")
+        c_file = str(getattr(c_mod, "__file__", "") or "")
+        if c_file and c_file.endswith((".py", "__init__.py")):
+            return False, f"torch._C resolved to python file: {c_file}"
+        _ = str(getattr(torch, "__version__", ""))
+        return True, "ok"
+    except Exception as e:
+        return False, str(e)
+
+
+def _runtime_deps_ready_now() -> tuple[bool, str]:
     _ensure_runtime_pydeps_path()
     need = ["PIL", "torch", "transformers", "numpy"]
     missing = [m for m in need if importlib.util.find_spec(m) is None]
-    if not missing:
+    if missing:
+        return False, f"missing modules: {', '.join(missing)}"
+    ok_torch, reason_torch = _check_torch_runtime()
+    if not ok_torch:
+        return False, f"torch runtime invalid: {reason_torch}"
+    return True, "ok"
+
+
+def _ensure_siglip_runtime_deps() -> None:
+    ok, reason = _runtime_deps_ready_now()
+    if ok:
         return
-    env_extra = _siglip_env_extra()
-    last_err: Exception | None = None
-    for _ in range(2):
-        try:
-            _reinstall_siglip_runtime_deps(env_extra)
-            _ensure_runtime_pydeps_path()
-            return
-        except Exception as e:
-            last_err = e
-    raise RuntimeError(f"pip install failed for siglip runtime deps: {last_err}")
+    raise RuntimeError(
+        "siglip runtime deps not ready: "
+        f"{reason}. "
+        "Please run SigLIP download/install first."
+    )
 
 
 def _set_dl_state(task_id: str, patch: dict[str, Any]) -> None:
@@ -402,6 +428,9 @@ def _ensure_siglip_runtime_loaded(model_id: str) -> tuple[Any, Any, Any, Any, st
     try:
         _ensure_siglip_runtime_deps()
         try:
+            ok_torch, reason_torch = _check_torch_runtime()
+            if not ok_torch:
+                raise RuntimeError(reason_torch)
             import torch
             from transformers import AutoModel, AutoProcessor, AutoTokenizer
         except Exception as e:

@@ -165,6 +165,20 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "MEMORY_SEMANTIC_TOP_FACTS": {"type": "int", "default": 8, "min": 0, "max": 20},
     # Recovery codes (comma-separated SHA256 hashes, burn-on-use)
     "DATA_UI_RECOVERY_CODES": {"type": "text", "default": ""},
+    "READER_DIRECTION": {"type": "text", "default": "ltr"},
+    "READER_MODE": {"type": "text", "default": "paged"},
+    "READER_FIT_MODE": {"type": "text", "default": "contain"},
+    "READER_SWIPE_ENABLED": {"type": "bool", "default": True},
+    "READER_TAP_TO_TURN": {"type": "bool", "default": True},
+    "READER_PAGE_ANIM_ENABLED": {"type": "bool", "default": True},
+    "READER_PRELOAD_COUNT": {"type": "int", "default": 2, "min": 0, "max": 4},
+    "READER_WHEEL_RADIUS": {"type": "float", "default": 320.0, "min": 120.0, "max": 1000000.0},
+    "READER_WHEEL_CURVE": {"type": "int", "default": 55, "min": 0, "max": 100},
+    "READER_WHEEL_POSITION": {"type": "text", "default": "bottom"},
+    "READER_HIDE_START_BUTTON": {"type": "bool", "default": False},
+    "READER_HIDE_APP_UI": {"type": "bool", "default": True},
+    "READER_VIEWPORT_FIT_COVER": {"type": "bool", "default": True},
+    "REC_SHOW_PAGE_COUNT": {"type": "bool", "default": True},
 }
 
 TASK_COMMANDS = {

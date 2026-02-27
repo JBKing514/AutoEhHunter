@@ -1,6 +1,6 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import { getHomeHistory, getHomeRecommend, getHomeTagSuggest, getRecommendItems, postRecommendDislike, postRecommendImpressions, postRecommendTouchKeepalive, searchByImage, searchByImageUpload, searchByText } from "../api";
+import { getHomeHistory, getHomeLocal, getHomeRecommend, getHomeTagSuggest, getReaderManifest, getRecommendItems, postRecommendDislike, postRecommendImpressions, postRecommendTouchKeepalive, searchByImage, searchByImageUpload, searchByText } from "../api";
 
 export const useDashboardStore = defineStore("dashboard", () => {
   const homeTab = ref("recommend");
@@ -9,6 +9,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
   const imageSearchQuery = ref("");
   const homeSentinel = ref(null);
   const homeHistory = ref({ items: [], cursor: "", hasMore: true, loading: false, error: "" });
+  const homeLocal = ref({ items: [], cursor: "", hasMore: true, loading: false, error: "" });
   const homeRecommend = ref({ items: [], cursor: "", hasMore: true, loading: false, error: "" });
   const homeRecommendDepth = ref(1);
   const homeRecommendCanExpand = ref(true);
@@ -28,6 +29,8 @@ export const useDashboardStore = defineStore("dashboard", () => {
   const quickSearchOpen = ref(false);
   const showScrollQuickActions = ref(false);
   const lastWindowScrollY = ref(0);
+  const pageCountCache = ref({});
+  const pageCountLoading = ref({});
 
   const ehCategoryDefs = [
     { key: "doujinshi", label: "Doujinshi", color: "#ff5252" },
@@ -67,6 +70,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
 
   const activeHomeState = computed(() => {
     if (homeTab.value === "history") return homeHistory.value;
+    if (homeTab.value === "local") return homeLocal.value;
     if (homeTab.value === "recommend") return homeRecommend.value;
     return homeSearchState.value;
   });
@@ -160,7 +164,57 @@ export const useDashboardStore = defineStore("dashboard", () => {
     const src = item?.source === "eh_works" ? "EH" : "LRR";
     const epoch = item?.meta?.read_time || item?.meta?.posted || item?.meta?.date_added;
     const cat = categoryLabel(item);
-    return `${src} · ${formatEpoch(epoch)}${cat ? ` · ${cat}` : ""}`;
+    const page = pageCountText(item);
+    return `${src} · ${formatEpoch(epoch)}${cat ? ` · ${cat}` : ""}${page ? ` · ${page}` : ""}`;
+  }
+
+  function shouldShowPageCount() {
+    return config.value.REC_SHOW_PAGE_COUNT !== false;
+  }
+
+  function requestWorkPageCount(item) {
+    const arcid = String(item?.arcid || "").trim();
+    if (!arcid) return;
+    if (pageCountCache.value[arcid] !== undefined) return;
+    if (pageCountLoading.value[arcid]) return;
+    pageCountLoading.value = { ...pageCountLoading.value, [arcid]: true };
+    getReaderManifest(arcid).then((res) => {
+      const n = Number(res?.page_count || 0);
+      pageCountCache.value = {
+        ...pageCountCache.value,
+        [arcid]: Number.isFinite(n) && n > 0 ? Math.floor(n) : 0,
+      };
+    }).catch(() => {
+      pageCountCache.value = {
+        ...pageCountCache.value,
+        [arcid]: 0,
+      };
+    }).finally(() => {
+      const next = { ...pageCountLoading.value };
+      delete next[arcid];
+      pageCountLoading.value = next;
+    });
+  }
+
+  function pageCount(item) {
+    if (!shouldShowPageCount()) return 0;
+    if (String(item?.source || "") === "eh_works") {
+      const n = Number(item?.meta?.page_count || 0);
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+    }
+    if (String(item?.source || "") === "works") {
+      const arcid = String(item?.arcid || "").trim();
+      if (!arcid) return 0;
+      const cached = Number(pageCountCache.value[arcid]);
+      if (Number.isFinite(cached) && cached > 0) return Math.floor(cached);
+      requestWorkPageCount(item);
+    }
+    return 0;
+  }
+
+  function pageCountText(item) {
+    const n = pageCount(item);
+    return n > 0 ? `${n}P` : "";
   }
 
   function itemPrimaryLink(item) {
@@ -543,7 +597,9 @@ export const useDashboardStore = defineStore("dashboard", () => {
       }
       const res = homeTab.value === "history"
         ? await getHomeHistory(params)
-        : (Number(homeRecommendDepth.value || 1) > 1 ? await getRecommendItems(params) : await getHomeRecommend(params));
+        : homeTab.value === "local"
+          ? await getHomeLocal(params)
+          : (Number(homeRecommendDepth.value || 1) > 1 ? await getRecommendItems(params) : await getHomeRecommend(params));
       const rows = res.items || [];
       state.items = reset ? rows : [...state.items, ...rows];
       state.cursor = res.next_cursor || "";
@@ -710,6 +766,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
     imageSearchQuery,
     homeSentinel,
     homeHistory,
+    homeLocal,
     homeRecommend,
     homeRecommendDepth,
     homeRecommendCanExpand,
@@ -739,6 +796,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
     itemSubtitle,
     itemPrimaryLink,
     categoryLabel,
+    pageCountText,
     categoryBadgeStyle,
     itemHoverTags,
     effectiveFilterCategories,

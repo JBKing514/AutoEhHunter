@@ -3,6 +3,18 @@ html {
   font-size: calc(16px * var(--aeh-page-zoom));
 }
 
+html,
+body,
+#app {
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+}
+
+.v-application {
+  min-height: 100dvh !important;
+}
+
 .v-main {
   background:
     radial-gradient(circle at 8% 12%, rgba(var(--v-theme-primary), 0.14), transparent 30%),

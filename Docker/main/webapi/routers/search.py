@@ -2,6 +2,7 @@ import asyncio
 import json
 import threading
 from typing import Any
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
@@ -31,6 +32,8 @@ router = APIRouter(tags=["search"])
 
 _thumb_client_lock = threading.Lock()
 _thumb_client: httpx.AsyncClient | None = None
+_reader_manifest_lock = threading.Lock()
+_reader_manifest_cache: dict[str, dict[str, Any]] = {}
 
 
 def _get_thumb_http_client() -> httpx.AsyncClient:
@@ -44,6 +47,62 @@ def _get_thumb_http_client() -> httpx.AsyncClient:
                 timeout=httpx.Timeout(connect=8.0, read=10.0, write=8.0, pool=5.0),
             )
         return _thumb_client
+
+
+def _normalize_lrr_page_path(raw: str) -> str:
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    if s.startswith("http://") or s.startswith("https://") or s.startswith("/") or s.startswith("./"):
+        if s.startswith("./"):
+            s = s[1:]
+        u = urlsplit(s)
+        q = parse_qs(str(u.query or ""), keep_blank_values=False)
+        path_vals = q.get("path") or []
+        if path_vals:
+            return str(path_vals[0] or "").strip()
+        if "&path=" in s and not path_vals:
+            tail = s.split("&path=", 1)[1]
+            return unquote(tail.split("&", 1)[0]).strip()
+    return s
+
+
+async def _load_reader_manifest(arcid: str, *, force: bool = False) -> list[str]:
+    key = str(arcid or "").strip()
+    if not key:
+        return []
+    if not force:
+        with _reader_manifest_lock:
+            cached = _reader_manifest_cache.get(key)
+            if cached and isinstance(cached.get("pages"), list) and cached.get("pages"):
+                return list(cached.get("pages") or [])
+
+    cfg, _ = resolve_config()
+    base = str(cfg.get("LRR_BASE") or "http://lanraragi:3000").strip().rstrip("/")
+    api_key = str(cfg.get("LRR_API_KEY") or "").strip()
+    url = f"{base}/api/archives/{key}/files"
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    client = _get_thumb_http_client()
+    try:
+        resp = await client.get(url, headers=headers, timeout=15.0)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"reader manifest load failed: {e}")
+
+    raw_pages = payload.get("pages") if isinstance(payload, dict) else []
+    pages: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_pages or []:
+        p = _normalize_lrr_page_path(str(raw or ""))
+        if p and p not in seen:
+            seen.add(p)
+            pages.append(p)
+    with _reader_manifest_lock:
+        _reader_manifest_cache[key] = {"pages": list(pages)}
+    return pages
 
 
 async def _fetch_bytes_with_retries(
@@ -246,6 +305,52 @@ async def thumb_eh(gid: int, token: str) -> Response:
 
     _cache_write(cache_key, data)
     return Response(content=data, media_type=ctype, headers={"X-Thumb-Cache": "MISS"})
+
+
+@router.get("/api/reader/{arcid}/manifest")
+async def reader_manifest(arcid: str) -> dict[str, Any]:
+    safe_arcid = str(arcid or "").strip()
+    if not safe_arcid:
+        raise HTTPException(status_code=400, detail="arcid required")
+    pages = await _load_reader_manifest(safe_arcid)
+    row = query_rows("SELECT title FROM works WHERE arcid = %s LIMIT 1", (safe_arcid,))
+    title = str((row[0] if row else {}).get("title") or "")
+    return {
+        "arcid": safe_arcid,
+        "title": title,
+        "page_count": len(pages),
+    }
+
+
+@router.get("/api/reader/{arcid}/page/{index}")
+async def reader_page(arcid: str, index: int) -> Response:
+    safe_arcid = str(arcid or "").strip()
+    if not safe_arcid:
+        raise HTTPException(status_code=400, detail="arcid required")
+    if int(index) < 1:
+        raise HTTPException(status_code=400, detail="index must be >= 1")
+    pages = await _load_reader_manifest(safe_arcid)
+    if int(index) > len(pages):
+        raise HTTPException(status_code=404, detail="page out of range")
+
+    cfg, _ = resolve_config()
+    base = str(cfg.get("LRR_BASE") or "http://lanraragi:3000").strip().rstrip("/")
+    api_key = str(cfg.get("LRR_API_KEY") or "").strip()
+    page_path = str(pages[int(index) - 1] or "").strip()
+    if not page_path:
+        raise HTTPException(status_code=404, detail="page path missing")
+    url = f"{base}/api/archives/{safe_arcid}/page?path={quote(page_path, safe='')}"
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    client = _get_thumb_http_client()
+    try:
+        resp = await client.get(url, headers=headers, timeout=20.0)
+        resp.raise_for_status()
+        ctype = str(resp.headers.get("content-type") or "image/jpeg")
+        return Response(content=resp.content, media_type=ctype)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"reader page fetch failed: {e}")
 
 
 @router.post("/api/home/search/image")

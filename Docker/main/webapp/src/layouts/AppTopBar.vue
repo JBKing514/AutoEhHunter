@@ -1,5 +1,5 @@
 <template>
-  <v-app-bar flat color="surface">
+  <v-app-bar flat color="surface" :class="{ 'app-header': safeAreaTopInset }">
     <v-app-bar-nav-icon @click="emit('toggle-drawer')" />
     <v-app-bar-title class="font-weight-bold">{{ t(currentTitleKey) }}</v-app-bar-title>
     <v-spacer />
@@ -76,6 +76,7 @@ defineProps({
   notices: { type: Array, default: () => [] },
   authUser: { type: Object, default: () => ({}) },
   t: { type: Function, required: true },
+  safeAreaTopInset: { type: Boolean, default: false },
 });
 
 const emit = defineEmits([
@@ -111,3 +112,16 @@ const handleCycleTheme = async () => {
   }
 };
 </script>
+
+<style scoped>
+.app-header {
+  background-color: #000000;
+}
+
+@media (max-width: 959px) {
+  .app-header {
+    padding-top: env(safe-area-inset-top);
+    padding-top: max(20px, env(safe-area-inset-top));
+  }
+}
+</style>

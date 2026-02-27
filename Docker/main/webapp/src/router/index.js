@@ -7,6 +7,7 @@ const routes = [
     children: [
       { path: "", redirect: "/dashboard" },
       { path: "dashboard", name: "dashboard", component: () => import("../views/DashboardPage.vue") },
+      { path: "reader/:arcid", name: "reader", component: () => import("../views/ReaderPage.vue") },
       { path: "chat", name: "chat", component: () => import("../views/ChatPage.vue") },
       { path: "control", name: "control", component: () => import("../views/ControlPage.vue") },
       { path: "audit", name: "audit", component: () => import("../views/AuditPage.vue") },
@@ -22,6 +23,7 @@ const routes = [
           { path: "search", name: "settings-search", component: () => import("../views/settings/SearchSettingsPage.vue") },
           { path: "recommend", name: "settings-recommend", component: () => import("../views/settings/RecommendSettingsPage.vue") },
           { path: "llm", name: "settings-llm", component: () => import("../views/settings/LlmSettingsPage.vue") },
+          { path: "reader", name: "settings-reader", component: () => import("../views/settings/ReaderSettingsPage.vue") },
           { path: "plugins", name: "settings-plugins", component: () => import("../views/settings/PluginsSettingsPage.vue") },
           { path: "other", name: "settings-other", component: () => import("../views/settings/OtherSettingsPage.vue") },
           { path: "developer", name: "settings-developer", component: () => import("../views/settings/DeveloperSettingsPage.vue") },

@@ -274,6 +274,7 @@ def _item_from_eh(row: dict[str, Any], cfg: dict[str, Any] | None = None) -> dic
         "score": float(row.get("score") or 0.0),
         "meta": {
             "posted": _norm_epoch(row.get("posted")),
+            "page_count": int(row.get("filecount") or 0) if int(row.get("filecount") or 0) > 0 else None,
         },
     }
 
@@ -472,7 +473,7 @@ def _search_text_non_llm(
 
     if scope in ("eh", "both"):
         rows = query_rows(
-            "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted "
+            "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted, filecount "
             "FROM eh_works "
             "WHERE (title ILIKE %s OR title_jpn ILIKE %s OR array_to_string(tags, ' ') ILIKE %s OR array_to_string(tags_translated, ' ') ILIKE %s) "
             "OR (tags && %s::text[]) OR (tags_translated && %s::text[]) "
@@ -528,7 +529,7 @@ def _search_by_visual_vector(
             items.append(_item_from_work({**r, "score": score}, cfg))
     if scope in ("eh", "both"):
         eh_rows = query_rows(
-            "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted, "
+            "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted, filecount, "
             "(cover_embedding <=> (%s)::vector) AS dist "
             "FROM eh_works WHERE cover_embedding IS NOT NULL "
             "ORDER BY cover_embedding <=> (%s)::vector LIMIT %s",
@@ -696,7 +697,7 @@ def _agent_nl_search(
         (work_ids or [""],),
     ) if work_ids else []
     eh_rows = query_rows(
-        "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted "
+        "SELECT gid, token, eh_url, ex_url, title, title_jpn, category, tags, tags_translated, posted, filecount "
         "FROM eh_works WHERE (gid, token) IN (SELECT * FROM unnest(%s::int[], %s::text[]))",
         ([x[0] for x in eh_pairs] or [0], [x[1] for x in eh_pairs] or ["_"]),
     ) if eh_pairs else []

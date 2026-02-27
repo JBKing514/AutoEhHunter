@@ -219,6 +219,7 @@ const settingsPathMap = {
   search: "search",
   recommend: "recommend",
   llm: "llm",
+  reader: "reader",
   other: "other",
   developer: "developer",
 };
@@ -230,6 +231,7 @@ const pathSettingsMap = {
   search: "search",
   recommend: "recommend",
   llm: "llm",
+  reader: "reader",
   other: "other",
   developer: "developer",
 };
