@@ -235,6 +235,17 @@ function pageFromRoute() {
   return Math.floor(p);
 }
 
+function toggleFullscreen() {
+  if (typeof document === "undefined") return;
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch((err) => {
+      console.warn("全屏请求被拒绝:", err);
+    });
+  } else {
+    document.exitFullscreen().catch(() => null);
+  }
+}
+
 function closeReader() {
   if (typeof window !== "undefined" && window.history.length <= 1) {
     goHome();
@@ -422,6 +433,9 @@ watch(() => readerMode.value, async (next) => {
 });
 
 onMounted(() => {
+  if (typeof document !== "undefined" && !document.fullscreenElement) {
+    toggleFullscreen();
+  }
   loadManifest().catch(() => null);
 });
 
@@ -432,6 +446,9 @@ watch(() => route.fullPath, () => {
 });
 
 onBeforeUnmount(() => {
+  if (typeof document !== "undefined" && document.fullscreenElement) {
+    toggleFullscreen();
+  }
   clearLongPressTimer();
   disposeContinuousScroll();
 });

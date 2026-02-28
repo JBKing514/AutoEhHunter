@@ -16,8 +16,8 @@ export default defineConfig({
         name: "AutoEhHunter",
         short_name: "AEH",
         description: "AutoEhHunter dashboard",
-        theme_color: "#2563eb",
-        background_color: "#f4f7ff",
+        theme_color: "#000000",
+        background_color: "#000000",
         display: "standalone",
         start_url: "/",
         icons: [
