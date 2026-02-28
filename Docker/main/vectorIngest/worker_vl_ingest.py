@@ -5,13 +5,12 @@ Pipeline per arcid:
   - Fetch cover + 3 random pages from LANraragi Archive API
   - Send images to a local OpenAI-compatible VLM (llama.cpp llama-server)
   - Embed the resulting description text using a local embedding server (bge-m3)
-  - Compute a visual embedding using local SigLIP runtime (same path as webapi vision service)
-  - Write back: works.description, works.desc_embedding, works.visual_embedding
+  - Write back: works.description, works.desc_embedding
 
 This is designed to run on your Ubuntu worker box.
 
 Dependencies:
-  pip install "psycopg[binary]" requests python-dotenv torch torchvision transformers pillow
+  pip install "psycopg[binary]" requests python-dotenv pillow
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ import json
 import os
 import random
 import sys
-import tempfile
 import time
 import uuid
 import shutil
@@ -391,38 +389,6 @@ class OpenAICompatClient:
         return [float(x) for x in emb]
 
 
-def _embed_image_siglip_local(image_bytes: bytes, model_id: str) -> list[float]:
-    try:
-        from webapi.services.vision_service import _embed_image_siglip
-    except Exception:
-        root = str(Path(__file__).resolve().parents[1])
-        if root not in sys.path:
-            sys.path.append(root)
-        from webapi.services.vision_service import _embed_image_siglip
-    return _embed_image_siglip(image_bytes, model_id)
-
-
-def _l2_normalize(vec: list[float]) -> list[float]:
-    s = 0.0
-    for x in vec:
-        s += float(x) * float(x)
-    if s <= 0.0:
-        return vec
-    inv = s ** -0.5
-    return [float(x) * inv for x in vec]
-
-
-def _sniff_image_ext_and_mime(b: bytes) -> tuple[str, str]:
-    if b.startswith(b"\x89PNG\r\n\x1a\n"):
-        return ".png", "image/png"
-    if b[:2] == b"BM":
-        return ".bmp", "image/bmp"
-    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":
-        return ".webp", "image/webp"
-    # Default to jpeg.
-    return ".jpg", "image/jpeg"
-
-
 def _normalize_to_jpeg_bytes(b: bytes) -> bytes:
     """Decode image bytes and re-encode as JPEG.
 
@@ -736,23 +702,6 @@ def main(argv: list[str]) -> int:
         help="Do not delete temp media files (useful for debugging)",
     )
 
-    ap.add_argument(
-        "--siglip-model",
-        default=os.getenv("SIGLIP_MODEL", "google/siglip-so400m-patch14-384"),
-        help="SigLIP model id for local embedding runtime",
-    )
-    ap.add_argument(
-        "--siglip-only",
-        action="store_true",
-        default=_env_bool("WORKER_SIGLIP_ONLY", False),
-        help="Skip VLM + text embedding and only write visual_embedding",
-    )
-    ap.add_argument(
-        "--auto-fallback-siglip-only",
-        action="store_true",
-        default=_env_bool("WORKER_AUTO_FALLBACK_SIGLIP_ONLY", True),
-        help="Fallback to SigLIP-only mode when VLM/embedding call fails",
-    )
     ap.add_argument("--seed", type=int, default=int(os.getenv("WORKER_SEED", "1337")))
     ap.add_argument("--limit", type=int, default=int(os.getenv("WORKER_LIMIT", "0")), help="Max arcids to process (0 = unlimited)")
     ap.add_argument("--batch", type=int, default=int(os.getenv("WORKER_BATCH", "32")), help="DB update batch size")
@@ -761,7 +710,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--retry-fail-embedding",
         action="store_true",
-        help="Reset works rows with cover_embedding_status=fail back to pending before processing",
+        help="Deprecated no-op (kept for compatibility)",
     )
     ap.add_argument("--arcid", nargs="*", help="Specific arcid(s) to process")
     ap.add_argument("--sleep", type=float, default=float(os.getenv("WORKER_SLEEP", "0")), help="Sleep seconds between items")
@@ -808,8 +757,6 @@ def main(argv: list[str]) -> int:
             v = str(db_cfg.get("INGEST_EMB_MODEL_CUSTOM") or db_cfg.get("INGEST_EMB_MODEL") or db_cfg.get("EMB_MODEL_ID") or "").strip()
             if v:
                 args.emb_model = v
-        if not _arg_present(argv, "--siglip-model") and str(db_cfg.get("SIGLIP_MODEL", "")).strip():
-            args.siglip_model = str(db_cfg.get("SIGLIP_MODEL", "")).strip()
         if not _arg_present(argv, "--batch") and str(db_cfg.get("WORKER_BATCH", "")).strip():
             try:
                 args.batch = int(str(db_cfg.get("WORKER_BATCH", "")).strip())
@@ -848,28 +795,24 @@ def main(argv: list[str]) -> int:
         and str(args.emb_base or "").strip()
         and str(args.emb_model or "").strip()
     )
-    text_pipeline_enabled = (not args.siglip_only) and text_pipeline_cfg_ok
-    if not text_pipeline_enabled:
-        reason = "disabled by --siglip-only" if args.siglip_only else "missing vl/emb base or model config"
-        print(f"INFO text pipeline disabled, use SigLIP-only mode: {reason}")
+    if not text_pipeline_cfg_ok:
+        print("ERROR missing vl/emb base or model config", file=sys.stderr)
+        return 2
 
-    vl: OpenAICompatClient | None = None
-    emb: OpenAICompatClient | None = None
-    if text_pipeline_enabled:
-        vl = OpenAICompatClient(
-            base_url=args.vl_base,
-            api_key=os.getenv("INGEST_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
-            retry_attempts=1,
-            retry_base_s=args.net_retry_base,
-            retry_max_s=args.net_retry_max,
-        )
-        emb = OpenAICompatClient(
-            base_url=args.emb_base,
-            api_key=os.getenv("INGEST_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
-            retry_attempts=1,
-            retry_base_s=args.net_retry_base,
-            retry_max_s=args.net_retry_max,
-        )
+    vl = OpenAICompatClient(
+        base_url=args.vl_base,
+        api_key=os.getenv("INGEST_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
+        retry_attempts=1,
+        retry_base_s=args.net_retry_base,
+        retry_max_s=args.net_retry_max,
+    )
+    emb = OpenAICompatClient(
+        base_url=args.emb_base,
+        api_key=os.getenv("INGEST_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
+        retry_attempts=1,
+        retry_base_s=args.net_retry_base,
+        retry_max_s=args.net_retry_max,
+    )
 
     media_dir = Path(args.vl_media_dir)
     if args.vl_image_mode == "file":
@@ -887,18 +830,9 @@ def main(argv: list[str]) -> int:
     select_sql = (
         "SELECT arcid FROM works "
         + (
-            (
-                "WHERE (description IS NULL OR description = '' OR desc_embedding IS NULL OR visual_embedding IS NULL) "
-                if text_pipeline_enabled
-                else "WHERE visual_embedding IS NULL "
-            )
+            "WHERE (description IS NULL OR description = '' OR desc_embedding IS NULL) "
             if args.only_missing
             else ""
-        )
-        + (
-            "AND (cover_embedding_status IS NULL OR cover_embedding_status IN ('pending','processing')) "
-            if args.only_missing
-            else "WHERE (cover_embedding_status IS NULL OR cover_embedding_status IN ('pending','processing')) "
         )
         + "ORDER BY arcid"
     )
@@ -915,11 +849,6 @@ def main(argv: list[str]) -> int:
         conn.execute("SET statement_timeout = '10min'")
         if not arcids:
             with conn.cursor() as cur:
-                if args.retry_fail_embedding:
-                    cur.execute(
-                        "UPDATE works SET cover_embedding_status='pending' "
-                        "WHERE visual_embedding IS NULL AND cover_embedding_status='fail'"
-                    )
                 cur.execute(select_sql)
                 arcids = [r[0] for r in cur.fetchall()]
                 conn.commit()
@@ -931,14 +860,6 @@ def main(argv: list[str]) -> int:
         for i, arcid in enumerate(arcids, start=1):
             t0 = time.time()
             try:
-                if not args.dry_run:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE works SET cover_embedding_status='processing' WHERE arcid=%s",
-                            (arcid,),
-                        )
-                    conn.commit()
-
                 blobs = _pick_images(lrr, arcid, rng=rng, k_random_pages=3)
                 if args.vl_normalize_jpeg:
                     norm: list[bytes] = []
@@ -952,145 +873,88 @@ def main(argv: list[str]) -> int:
                                 f"Original error: {e}"
                             )
                     blobs = norm
-                use_text_pipeline = text_pipeline_enabled
                 description = ""
                 semantic: list[float] = []
-                if use_text_pipeline:
-                    if vl is None or emb is None:
-                        raise RuntimeError("text pipeline client unavailable")
-                    instruction = (
-                        "请详细描述这些图片的内容。要求：\n"
-                        "- 重点包括：画风、角色外观、动作、服装细节、场景元素、构图、镜头、情绪氛围。\n"
-                        "- 尽量客观描述可见内容，不要编造看不见的设定。\n"
-                        "- 输出为一段结构化描述（可分句），不要输出多余前后缀。"
-                    )
-                    cleanup_dir: Path | None = None
-                    vl_ok = False
+                instruction = (
+                    "请详细描述这些图片的内容。要求：\n"
+                    "- 重点包括：画风、角色外观、动作、服装细节、场景元素、构图、镜头、情绪氛围。\n"
+                    "- 尽量客观描述可见内容，不要编造看不见的设定。\n"
+                    "- 输出为一段结构化描述（可分句），不要输出多余前后缀。"
+                )
+                cleanup_dir: Path | None = None
+                vl_ok = False
+                try:
                     try:
-                        try:
-                            if args.vl_image_mode == "file":
-                                messages, cleanup_dir = _make_vlm_messages_file(
-                                    instruction,
-                                    blobs,
-                                    media_dir=media_dir,
-                                    arcid=arcid,
-                                    url_prefix=args.vl_file_url_prefix,
-                                )
-                            else:
-                                messages = _make_vlm_messages_data_url(instruction, blobs)
+                        if args.vl_image_mode == "file":
+                            messages, cleanup_dir = _make_vlm_messages_file(
+                                instruction,
+                                blobs,
+                                media_dir=media_dir,
+                                arcid=arcid,
+                                url_prefix=args.vl_file_url_prefix,
+                            )
+                        else:
+                            messages = _make_vlm_messages_data_url(instruction, blobs)
 
-                            if args.vl_image_mode == "file" and cleanup_dir is not None:
-                                if _env_bool("VL_DEBUG_URLS", False):
-                                    files = [p.name for p in sorted(cleanup_dir.iterdir()) if p.is_file()]
-                                    print(f"VLM media_dir={media_dir} subdir={cleanup_dir.name} files={files}")
-                                # The initial message build is only for a fast path; retry logic below
-                                # tries multiple URL styles if the server complains.
-                                description = _try_vlm_with_dir(
-                                    vl,
-                                    model=args.vl_model,
-                                    instruction=instruction,
-                                    images_dir=cleanup_dir,
-                                    preferred_prefix=args.vl_file_url_prefix,
-                                )
-                            else:
-                                description = vl.chat_completions(
-                                    model=args.vl_model,
-                                    messages=messages,
-                                    temperature=0.2,
-                                    max_tokens=900,
-                                ).strip()
-                            vl_ok = True
-                        finally:
-                            if cleanup_dir is not None and (not args.vl_keep_media) and vl_ok:
-                                shutil.rmtree(cleanup_dir, ignore_errors=True)
+                        if args.vl_image_mode == "file" and cleanup_dir is not None:
+                            if _env_bool("VL_DEBUG_URLS", False):
+                                files = [p.name for p in sorted(cleanup_dir.iterdir()) if p.is_file()]
+                                print(f"VLM media_dir={media_dir} subdir={cleanup_dir.name} files={files}")
+                            description = _try_vlm_with_dir(
+                                vl,
+                                model=args.vl_model,
+                                instruction=instruction,
+                                images_dir=cleanup_dir,
+                                preferred_prefix=args.vl_file_url_prefix,
+                            )
+                        else:
+                            description = vl.chat_completions(
+                                model=args.vl_model,
+                                messages=messages,
+                                temperature=0.2,
+                                max_tokens=900,
+                            ).strip()
+                        vl_ok = True
+                    finally:
+                        if cleanup_dir is not None and (not args.vl_keep_media) and vl_ok:
+                            shutil.rmtree(cleanup_dir, ignore_errors=True)
 
+                    if not description:
+                        raise RuntimeError("Empty description")
+                    semantic = emb.embeddings(model=args.emb_model, text=description)
+                except Exception as e:
+                    if args.vl_image_mode == "file" and _need_base64_data_url(e):
+                        messages = _make_vlm_messages_data_url(instruction, blobs)
+                        description = vl.chat_completions(
+                            model=args.vl_model,
+                            messages=messages,
+                            temperature=0.2,
+                            max_tokens=900,
+                        ).strip()
                         if not description:
                             raise RuntimeError("Empty description")
                         semantic = emb.embeddings(model=args.emb_model, text=description)
-                    except Exception as e:
-                        if args.vl_image_mode == "file" and _need_base64_data_url(e):
-                            try:
-                                messages = _make_vlm_messages_data_url(instruction, blobs)
-                                description = vl.chat_completions(
-                                    model=args.vl_model,
-                                    messages=messages,
-                                    temperature=0.2,
-                                    max_tokens=900,
-                                ).strip()
-                                if not description:
-                                    raise RuntimeError("Empty description")
-                                semantic = emb.embeddings(model=args.emb_model, text=description)
-                                print(f"INFO {arcid}: switched to data_url mode for LM Studio compatibility")
-                            except Exception as e2:
-                                e = e2
-                            else:
-                                # recovered by base64 data_url fallback
-                                pass
-                        if description and semantic:
-                            pass
-                        elif args.auto_fallback_siglip_only:
-                            use_text_pipeline = False
-                            description = ""
-                            semantic = []
-                            print(f"WARN {arcid}: text pipeline failed, fallback to SigLIP-only mode: {e}")
-                        else:
-                            raise
+                        print(f"INFO {arcid}: switched to data_url mode for LM Studio compatibility")
+                    else:
+                        raise
 
-                # Visual embedding: average over sampled images, then L2 normalize.
-                with tempfile.TemporaryDirectory(prefix=f"lrr_{arcid}_") as td:
-                    paths: list[str] = []
-                    for j, b in enumerate(blobs):
-                        p = str(Path(td) / f"img_{j:02d}.jpg")
-                        Path(p).write_bytes(b)
-                        paths.append(p)
-                    vecs = []
-                    for p in paths:
-                        with open(p, "rb") as f:
-                            vecs.append(_embed_image_siglip_local(f.read(), args.siglip_model))
-                    dim = len(vecs[0])
-                    acc = [0.0] * dim
-                    for v in vecs:
-                        if len(v) != dim:
-                            raise RuntimeError(f"SigLIP dim mismatch: {len(v)} vs {dim}")
-                        for k in range(dim):
-                            acc[k] += float(v[k])
-                    acc = [x / float(len(vecs)) for x in acc]
-                    visual = _l2_normalize(acc)
-
-                if use_text_pipeline:
-                    if not args.dry_run:
-                        with conn.cursor() as cur:
-                            cur.execute(
-                                "UPDATE works "
-                                "SET description = %s, desc_embedding = %s::vector, visual_embedding = %s::vector, cover_embedding_status='complete' "
-                                "WHERE arcid = %s",
-                                (description, _vector_literal(semantic), _vector_literal(visual), arcid),
-                            )
-                        conn.commit()
-                else:
-                    if not args.dry_run:
-                        with conn.cursor() as cur:
-                            cur.execute(
-                                "UPDATE works SET visual_embedding = %s::vector, cover_embedding_status='complete' WHERE arcid = %s",
-                                (_vector_literal(visual), arcid),
-                            )
-                        conn.commit()
+                if not args.dry_run:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE works SET description = %s, desc_embedding = %s::vector WHERE arcid = %s",
+                            (description, _vector_literal(semantic), arcid),
+                        )
+                    conn.commit()
 
                 dt = time.time() - t0
-                mode_txt = "full" if use_text_pipeline else "siglip-only"
-                print(f"[{i}/{len(arcids)}] OK {arcid} ({dt:.2f}s) mode={mode_txt} desc_len={len(description)}")
+                print(f"[{i}/{len(arcids)}] OK {arcid} ({dt:.2f}s) mode=text-only desc_len={len(description)}")
 
             except Exception as e:
                 dt = time.time() - t0
                 print(f"[{i}/{len(arcids)}] ERROR {arcid} ({dt:.2f}s): {e}", file=sys.stderr)
                 print(traceback.format_exc(), file=sys.stderr)
-                if not args.dry_run:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE works SET cover_embedding_status='fail' WHERE arcid = %s",
-                            (arcid,),
-                        )
-                    conn.commit()
+                # keep current cover_embedding_status untouched;
+                # SigLIP visual补全由 webapi worker 单独处理。
 
             if args.sleep > 0:
                 time.sleep(args.sleep)

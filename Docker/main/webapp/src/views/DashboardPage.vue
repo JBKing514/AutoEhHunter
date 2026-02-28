@@ -392,6 +392,7 @@ export default {
     return useDashboardStore();
   },
   mounted() {
+    this.applyReaderOriginRestore();
     this.$nextTick(() => {
       if (typeof this.bindHomeInfiniteScroll === "function") {
         this.bindHomeInfiniteScroll();
@@ -427,14 +428,59 @@ export default {
     },
   },
   methods: {
+    applyReaderOriginRestore() {
+      if (typeof window === "undefined") return;
+      let payload = null;
+      try {
+        const raw = window.sessionStorage.getItem("aeh_reader_origin");
+        if (raw) payload = JSON.parse(raw);
+      } catch {
+        payload = null;
+      }
+      if (!payload || typeof payload !== "object") return;
+      try {
+        window.sessionStorage.removeItem("aeh_reader_origin");
+      } catch {
+        // ignore
+      }
+      const tab = String(payload.tab || "").trim();
+      if (["recommend", "local", "history", "search"].includes(tab)) {
+        this.homeTab = tab;
+      }
+      const vm = String(payload.viewMode || "").trim();
+      if (["wide", "compact", "list"].includes(vm)) {
+        this.homeViewMode = vm;
+      }
+      const y = Number(payload.scrollY || 0);
+      this.$nextTick(() => {
+        if (Number.isFinite(y) && y > 0) {
+          window.requestAnimationFrame(() => {
+            window.scrollTo({ top: y, left: 0, behavior: "auto" });
+          });
+        }
+      });
+    },
     startReader(item) {
       const arcid = String(item?.arcid || "").trim();
       if (!arcid) return;
       this.mobilePreviewItem = null;
+      if (typeof window !== "undefined") {
+        const payload = {
+          tab: String(this.homeTab || "recommend"),
+          viewMode: String(this.homeViewMode || "wide"),
+          scrollY: Number(window.scrollY || 0),
+          at: Date.now(),
+        };
+        try {
+          window.sessionStorage.setItem("aeh_reader_origin", JSON.stringify(payload));
+        } catch {
+          // ignore
+        }
+      }
       this.$router.push({
         name: "reader",
         params: { arcid },
-        query: { page: "1" },
+        query: { page: "1", origin: "dashboard" },
       }).catch(() => null);
     },
     onImageError(item) {

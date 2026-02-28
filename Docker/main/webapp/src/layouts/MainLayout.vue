@@ -30,6 +30,7 @@
       @update:lang="ui.setLangValue($event)"
       @update:zoom="ui.setPageZoom($event)"
       @dismiss-notice="ui.dismissNotice"
+      @notice-action="ui.runNoticeAction"
       @clear-all-notices="ui.clearAllNotices"
       @go-settings="ui.goTab('settings')"
       @logout="ui.logoutNow"

@@ -69,6 +69,26 @@ def _cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
 
 
+def _mix_profile_visual(cover_vec: Sequence[float], page_vec: Sequence[float]) -> List[float]:
+    c = [float(x) for x in (cover_vec or [])]
+    p = [float(x) for x in (page_vec or [])]
+    if c and p and len(c) == len(p):
+        mixed = [(0.6 * c[i]) + (0.4 * p[i]) for i in range(len(c))]
+    elif c:
+        mixed = c
+    elif p:
+        mixed = p
+    else:
+        return []
+    s = 0.0
+    for x in mixed:
+        s += float(x) * float(x)
+    if s <= 0:
+        return []
+    inv = s ** -0.5
+    return [float(x) * inv for x in mixed]
+
+
 def _get_user_base_vector(settings: Settings, user_id: str) -> List[float]:
     dsn = str(settings.postgres_dsn or "").strip()
     if not dsn:
@@ -152,8 +172,8 @@ def _build_profile(settings: Settings, profile_days: int) -> _RecProfileCache:
     tag_scores = _build_tag_scores(samples)
     points: List[List[float]] = []
     for s in samples:
-        vec = s.get("visual_embedding") or []
-        if isinstance(vec, list) and len(vec) > 0:
+        vec = _mix_profile_visual(s.get("visual_embedding") or [], s.get("page_visual_embedding") or [])
+        if vec:
             points.append([float(x) for x in vec])
 
     # Bound clustering cost.

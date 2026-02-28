@@ -95,10 +95,11 @@ async function saveNow() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: rgba(10, 10, 10, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, rgb(var(--v-theme-surface)) 86%, transparent);
+  border: 1px solid color-mix(in srgb, rgb(var(--v-theme-on-surface)) 18%, transparent);
   border-radius: 12px;
   padding: 10px;
   backdrop-filter: blur(6px);
+  color: rgb(var(--v-theme-on-surface));
 }
 </style>

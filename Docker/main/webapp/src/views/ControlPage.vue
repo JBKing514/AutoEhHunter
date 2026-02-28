@@ -7,16 +7,15 @@
           <v-alert v-if="health.database?.error" type="warning" class="mb-4">{{ t('dashboard.db_warning', { reason: health.database.error }) }}</v-alert>
           <v-card class="pa-4 mb-4">
             <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('control.manual') }}</div>
-            <v-row>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="primary" @click="triggerTask('eh_fetch')">{{ t('control.btn.eh_fetch') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="warning" variant="tonal" @click="clearEhCheckpointNow">{{ t('control.btn.clear_eh_checkpoint') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="primary" @click="triggerTask('lrr_export')">{{ t('control.btn.lrr_export') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="primary" @click="triggerTask('text_ingest')">{{ t('control.btn.text_ingest') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('eh_lrr_ingest')">{{ t('control.btn.eh_lrr_ingest') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('eh_ingest')">{{ t('control.btn.eh_ingest') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="warning" variant="tonal" @click="triggerTask('eh_ingest', '--retry-fail-embedding')">{{ t('control.btn.eh_ingest_retry_fail') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="secondary" @click="triggerTask('lrr_ingest')">{{ t('control.btn.lrr_ingest') }}</v-btn></v-col>
-              <v-col cols="12" md="4" lg="2"><v-btn block color="warning" variant="tonal" @click="triggerTask('lrr_ingest', '--retry-fail-embedding')">{{ t('control.btn.lrr_ingest_retry_fail') }}</v-btn></v-col>
+            <v-row class="manual-task-row" align="stretch">
+              <v-col cols="12" sm="6" md="4" lg="3" xl="2"><v-btn block class="manual-task-btn" color="primary" @click="triggerTask('eh_fetch')">{{ t('control.btn.eh_fetch') }}</v-btn></v-col>
+              <v-col cols="12" sm="6" md="4" lg="3" xl="2"><v-btn block class="manual-task-btn" color="warning" variant="tonal" @click="clearEhCheckpointNow">{{ t('control.btn.clear_eh_checkpoint') }}</v-btn></v-col>
+              <v-col cols="12" sm="6" md="4" lg="3" xl="2"><v-btn block class="manual-task-btn" color="primary" @click="triggerTask('lrr_sync_manual')">{{ t('control.btn.lrr_sync_manual') }}</v-btn></v-col>
+              <v-col cols="12" sm="6" md="4" lg="3" xl="2"><v-btn block class="manual-task-btn" color="secondary" @click="triggerTask('eh_lrr_ingest')">{{ t('control.btn.eh_lrr_ingest') }}</v-btn></v-col>
+              <v-col cols="12" sm="6" md="4" lg="3" xl="2"><v-btn block class="manual-task-btn" color="secondary" @click="triggerTask('eh_ingest')">{{ t('control.btn.eh_ingest') }}</v-btn></v-col>
+              <v-col cols="12" sm="6" md="4" lg="3" xl="2"><v-btn block class="manual-task-btn" color="warning" variant="tonal" @click="triggerTask('eh_ingest', '--retry-fail-embedding')">{{ t('control.btn.eh_ingest_retry_fail') }}</v-btn></v-col>
+              <v-col cols="12" sm="6" md="4" lg="3" xl="2"><v-btn block class="manual-task-btn" color="secondary" @click="triggerTask('lrr_ingest')">{{ t('control.btn.lrr_ingest') }}</v-btn></v-col>
+              <v-col cols="12" sm="6" md="4" lg="3" xl="2"><v-btn block class="manual-task-btn" color="warning" variant="tonal" @click="triggerTask('lrr_ingest', '--retry-fail-embedding')">{{ t('control.btn.lrr_ingest_retry_fail') }}</v-btn></v-col>
             </v-row>
           </v-card>
 
@@ -81,3 +80,15 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.manual-task-btn {
+  min-height: 52px;
+}
+
+.manual-task-btn :deep(.v-btn__content) {
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+}
+</style>

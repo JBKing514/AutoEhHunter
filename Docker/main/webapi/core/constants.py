@@ -18,8 +18,7 @@ CONFIG_SCOPE = "global"
 
 DEFAULT_SCHEDULE = {
     "eh_fetch": {"enabled": False, "cron": "*/30 * * * *"},
-    "lrr_export": {"enabled": False, "cron": "0 * * * *"},
-    "text_ingest": {"enabled": False, "cron": "5 * * * *"},
+    "lrr_sync": {"enabled": False, "cron": "0 * * * *"},
     "eh_lrr_ingest": {"enabled": False, "cron": "10 * * * *"},
 }
 
@@ -73,21 +72,26 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "SEARCH_RESULT_SIZE": {"type": "int", "default": 20, "min": 20, "max": 100},
     "SEARCH_RESULT_INFINITE": {"type": "bool", "default": False},
     "SEARCH_WEIGHT_VISUAL": {"type": "float", "default": 2.0, "min": 0.0, "max": 5.0},
+    "SEARCH_WEIGHT_PAGE_VISUAL": {"type": "float", "default": 1.2, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_EH_VISUAL": {"type": "float", "default": 1.6, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_DESC": {"type": "float", "default": 0.8, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_TEXT": {"type": "float", "default": 0.7, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_EH_TEXT": {"type": "float", "default": 0.7, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_PLOT_VISUAL": {"type": "float", "default": 0.6, "min": 0.0, "max": 5.0},
+    "SEARCH_WEIGHT_PLOT_PAGE_VISUAL": {"type": "float", "default": 0.4, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_PLOT_EH_VISUAL": {"type": "float", "default": 0.5, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_PLOT_DESC": {"type": "float", "default": 2.0, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_PLOT_TEXT": {"type": "float", "default": 0.9, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_PLOT_EH_TEXT": {"type": "float", "default": 0.9, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_MIXED_VISUAL": {"type": "float", "default": 1.2, "min": 0.0, "max": 5.0},
+    "SEARCH_WEIGHT_MIXED_PAGE_VISUAL": {"type": "float", "default": 0.9, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_MIXED_EH_VISUAL": {"type": "float", "default": 1.0, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_MIXED_DESC": {"type": "float", "default": 1.4, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_MIXED_TEXT": {"type": "float", "default": 0.9, "min": 0.0, "max": 5.0},
     "SEARCH_WEIGHT_MIXED_EH_TEXT": {"type": "float", "default": 0.9, "min": 0.0, "max": 5.0},
     "SEARCH_TAG_FUZZY_THRESHOLD": {"type": "float", "default": 0.62, "min": 0.2, "max": 1.0},
+    "SEARCH_WORK_COVER_WEIGHT": {"type": "float", "default": 0.6, "min": 0.0, "max": 1.0},
+    "SEARCH_WORK_PAGE_WEIGHT": {"type": "float", "default": 0.4, "min": 0.0, "max": 1.0},
     "TEXT_INGEST_PRUNE_NOT_SEEN": {"type": "bool", "default": True},
     "WORKER_ONLY_MISSING": {"type": "bool", "default": True},
     "LRR_READS_HOURS": {"type": "int", "default": 24, "min": 1, "max": 720},
@@ -127,6 +131,7 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "SIGLIP_DEVICE": {"type": "text", "default": "cpu"},
     "WORKER_BATCH": {"type": "int", "default": 32, "min": 1, "max": 512},
     "WORKER_SLEEP": {"type": "float", "default": 0.0, "min": 0.0, "max": 60.0},
+    "WORKS_PAGE_SAMPLE_COUNT": {"type": "int", "default": 4, "min": 1, "max": 8},
     "TAG_TRANSLATION_REPO": {"type": "text", "default": ""},
     "TAG_TRANSLATION_AUTO_UPDATE_HOURS": {"type": "int", "default": 24, "min": 1, "max": 720},
     "PROMPT_SEARCH_NARRATIVE_SYSTEM": {
@@ -183,8 +188,8 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
 
 TASK_COMMANDS = {
     "eh_fetch": ["/app/ehCrawler/run_eh_fetch.sh"],
-    "lrr_export": ["/app/lrrDataFlush/run_daily_lrr_export.sh"],
-    "text_ingest": ["/app/textIngest/run_daily_text_ingest.sh"],
+    "lrr_sync": ["bash", "/app/lrrDataFlush/run_daily_lrr_sync.sh"],
+    "lrr_sync_manual": ["bash", "/app/lrrDataFlush/run_daily_lrr_sync.sh", "--full-reads"],
     "eh_ingest": ["__eh_ingest__"],
     "lrr_ingest": ["__lrr_ingest__"],
     "eh_lrr_ingest": ["__eh_lrr_ingest__"],

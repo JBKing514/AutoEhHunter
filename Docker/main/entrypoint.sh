@@ -7,6 +7,8 @@ Usage: entrypoint.sh <command> [args...]
 
 Commands:
   eh-fetch             Run EH URL queue fetch
+  lrr-sync             Sync LANraragi API data to Postgres
+  lrr-sync-daily       Run LRR sync workflow (API -> Postgres)
   lrr-export-meta      Export LANraragi metadata to JSONL
   lrr-export-reads     Export LANraragi recent reads to JSONL
   lrr-export-daily     Run metadata + recent reads export workflow
@@ -18,6 +20,7 @@ Commands:
 
 Examples:
   entrypoint.sh eh-fetch
+  entrypoint.sh lrr-sync-daily
   entrypoint.sh lrr-export-meta --out /app/runtime/exports/lrr_full.jsonl
   entrypoint.sh lrr-export-reads --hours 24 --out /app/runtime/exports/lrr_reads_{timestamp}.jsonl
   entrypoint.sh lrr-export-daily
@@ -54,6 +57,9 @@ case "$cmd" in
     ;;
   eh-fetch)
     exec /app/ehCrawler/run_eh_fetch.sh "$@"
+    ;;
+  lrr-sync|lrr-sync-daily)
+    exec bash /app/lrrDataFlush/run_daily_lrr_sync.sh "$@"
     ;;
   lrr-export-meta)
     ARGS=(

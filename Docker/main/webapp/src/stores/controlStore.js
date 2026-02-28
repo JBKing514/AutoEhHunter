@@ -53,12 +53,16 @@ export const useControlStore = defineStore("control", () => {
 
   function statusColor(status) {
     if (status === "running") return "warning";
+    if (status === "stopping") return "warning";
+    if (status === "stopped") return "info";
     if (status === "success") return "success";
     return "error";
   }
 
   function statusText(status) {
     if (status === "running") return t("task.running");
+    if (status === "stopping") return t("task.stopping");
+    if (status === "stopped") return t("task.stopped");
     if (status === "success") return t("task.success");
     if (status === "timeout") return t("task.timeout");
     return t("task.failed");

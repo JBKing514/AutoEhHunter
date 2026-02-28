@@ -2,10 +2,13 @@
   <div
     class="wheel-shell"
     :class="`wheel-${wheelPosition}`"
+    :style="shellStyle"
     @touchstart.passive="onWheelTouchStart"
     @touchmove.prevent="onWheelTouchMove"
     @wheel.prevent="onWheelMouse"
   >
+    <div v-if="wheelPosition !== 'bottom'" class="wheel-side-mask" :class="`mask-${wheelPosition}`" />
+
     <div class="wheel-track-clip">
       <div class="wheel-track" :class="`wheel-track-${wheelPosition}`">
         <button
@@ -17,10 +20,14 @@
           @click="$emit('jump-to-page', Number(entry.page || 1))"
         >
           <img :src="String(entry.src || '')" alt="thumb" class="wheel-thumb" loading="lazy" />
-          <span class="wheel-label">{{ entry.page }}</span>
+          <div class="wheel-mask" />
+          <div class="wheel-label-wrap">
+            <span class="wheel-label">{{ entry.page }}</span>
+          </div>
         </button>
       </div>
     </div>
+
     <div class="wheel-slider-row" :class="`wheel-slider-${wheelPosition}`">
       <div class="wheel-progress-text">{{ progressText }}</div>
       <v-slider
@@ -29,7 +36,7 @@
         :max="Math.max(1, totalPages)"
         :step="1"
         :direction="wheelPosition === 'bottom' ? 'horizontal' : 'vertical'"
-        :reverse="wheelPosition !== 'bottom'"
+        :reverse="sliderReverse"
         hide-details
         color="deep-orange"
         thumb-color="white"
@@ -56,11 +63,22 @@ const emit = defineEmits(["jump-to-page"]);
 
 const touchAnchor = ref({ x: 0, y: 0, accum: 0 });
 
-const sliderValue = computed(() => {
-  return Number(props.currentPage || 1);
+const sliderValue = computed(() => Number(props.currentPage || 1));
+
+const sliderReverse = computed(() => {
+  if (props.wheelPosition === "bottom") return !!props.rtl;
+  return true;
 });
 
 const progressText = computed(() => `${Number(props.currentPage || 1)} / ${Math.max(1, Number(props.totalPages || 1))}`);
+
+const shellStyle = computed(() => {
+  const r = Math.max(120, Number(props.wheelRadius || 320));
+  const maskSize = Math.max(170, Math.min(440, Math.round(r * 0.92)));
+  return {
+    "--edge-mask-size": `${maskSize}px`,
+  };
+});
 
 function wheelItemStyle(page) {
   const rawOffset = Number(page) - Number(props.currentPage || 1);
@@ -78,7 +96,7 @@ function wheelItemStyle(page) {
     y = flat ? 0 : (x * x) / (2 * r);
     rotate = ` rotateY(${offset * -2.4}deg)`;
   } else {
-    y = offset * spacing;
+    y = -offset * spacing;
     const curve = flat ? 0 : (y * y) / (2 * r);
     x = props.wheelPosition === "left" ? -curve : curve;
     rotate = ` rotateX(${offset * 1.8}deg)`;
@@ -105,9 +123,7 @@ function onWheelTouchStart(event) {
 
 function emitStep(step) {
   const next = Math.max(1, Math.min(Number(props.totalPages || 1), Number(props.currentPage || 1) + step));
-  if (next !== Number(props.currentPage || 1)) {
-    emit("jump-to-page", next);
-  }
+  if (next !== Number(props.currentPage || 1)) emit("jump-to-page", next);
 }
 
 function onSliderChange(v) {
@@ -121,9 +137,10 @@ function onWheelTouchMove(event) {
   if (!t) return;
   const dx = Number(t.clientX || 0) - touchAnchor.value.x;
   const dy = Number(t.clientY || 0) - touchAnchor.value.y;
-  const raw = props.wheelPosition === "bottom" ? -dx : -dy;
+  let raw = props.wheelPosition === "bottom" ? dx : dy;
+  if (props.rtl && props.wheelPosition === "bottom") raw = -raw;
   const total = touchAnchor.value.accum + raw;
-  const stepPx = props.wheelPosition === "bottom" ? 40 : 34;
+  const stepPx = props.wheelPosition === "bottom" ? 18 : 16;
   const step = total > 0 ? Math.floor(total / stepPx) : Math.ceil(total / stepPx);
   if (step !== 0) {
     emitStep(step);
@@ -149,27 +166,50 @@ function onWheelMouse(event) {
 .wheel-bottom {
   left: 0;
   right: 0;
-  bottom: calc(14px + env(safe-area-inset-bottom));
+  bottom: 0;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  background: radial-gradient(ellipse 100% var(--edge-mask-size) at bottom center, rgba(15, 15, 15, 0.82) 0%, rgba(15, 15, 15, 0.36) 40%, transparent 100%);
+}
+
+.wheel-left,
+.wheel-right {
+  top: 50%;
+  transform: translateY(-50%);
+  align-items: center;
+  gap: 12px;
 }
 
 .wheel-left {
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
+  left: 0;
+  padding-left: calc(16px + env(safe-area-inset-left));
   flex-direction: row;
-  align-items: center;
-  gap: 8px;
 }
 
 .wheel-right {
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 0;
+  padding-right: calc(16px + env(safe-area-inset-right));
   flex-direction: row-reverse;
-  align-items: center;
-  gap: 8px;
+}
+
+.wheel-side-mask {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--edge-mask-size);
+  pointer-events: none;
+  filter: blur(10px);
+}
+
+.mask-left {
+  left: 0;
+  background: radial-gradient(ellipse var(--edge-mask-size) 100% at left center, rgba(96, 96, 96, 0.42) 0%, rgba(96, 96, 96, 0.22) 46%, transparent 100%);
+}
+
+.mask-right {
+  right: 0;
+  background: radial-gradient(ellipse var(--edge-mask-size) 100% at right center, rgba(96, 96, 96, 0.42) 0%, rgba(96, 96, 96, 0.22) 46%, transparent 100%);
 }
 
 .wheel-track-clip {
@@ -217,7 +257,45 @@ function onWheelMouse(event) {
   pointer-events: auto;
   cursor: pointer;
   padding: 0;
-  transition: transform 0.16s ease, opacity 0.16s ease, filter 0.16s ease;
+  transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.25s ease, filter 0.25s ease;
+}
+
+.wheel-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  transition: background 0.25s ease;
+  pointer-events: none;
+}
+
+.wheel-item.active .wheel-mask {
+  background: rgba(0, 0, 0, 0);
+}
+
+.wheel-label-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.wheel-label {
+  background: rgba(12, 14, 20, 0.85);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 14px;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.wheel-item:not(.active) .wheel-label {
+  opacity: 0.5;
+  transform: scale(0.85);
 }
 
 .wheel-item.active {
@@ -232,48 +310,48 @@ function onWheelMouse(event) {
   display: block;
 }
 
-.wheel-label {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  text-align: center;
-  font-size: 13px;
-  color: #fff;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.78));
-  line-height: 1.5;
-}
-
 .wheel-slider-row {
   pointer-events: auto;
-  padding-inline: 20px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .wheel-slider-bottom {
-  padding-inline: 24px;
+  width: min(60vw, 560px);
+  max-width: calc(100vw - 24px);
+  margin: 0 auto;
   flex-direction: column;
+}
+
+.wheel-slider-bottom :deep(.v-slider) {
+  width: 100%;
 }
 
 .wheel-slider-left,
 .wheel-slider-right {
-  width: 28px;
+  width: auto;
+  min-width: 72px;
   height: 280px;
   flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 
 .wheel-progress-text {
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 12px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  text-align: center;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
 }
 
 .wheel-slider-left :deep(.v-slider),
 .wheel-slider-right :deep(.v-slider) {
   height: 100%;
+  width: 28px;
 }
 
 .wheel-slider-left :deep(.v-slider .v-input__control),

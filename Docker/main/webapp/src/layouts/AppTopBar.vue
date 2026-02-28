@@ -37,6 +37,16 @@
       <v-list density="compact" min-width="360" class="notice-list">
         <v-list-item v-for="n in notices" :key="n.id" :title="n.title" :subtitle="n.text">
           <template #append>
+            <v-btn
+              v-if="n.actionLabel"
+              size="x-small"
+              variant="tonal"
+              color="warning"
+              class="mr-1"
+              @click="emit('notice-action', n.id)"
+            >
+              {{ n.actionLabel }}
+            </v-btn>
             <v-btn size="x-small" variant="text" icon="mdi-close" @click="emit('dismiss-notice', n.id)" />
           </template>
         </v-list-item>
@@ -85,6 +95,7 @@ const emit = defineEmits([
   "update:lang",
   "update:zoom",
   "dismiss-notice",
+  "notice-action",
   "clear-all-notices",
   "go-settings",
   "logout",

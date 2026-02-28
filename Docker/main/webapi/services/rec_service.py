@@ -343,6 +343,18 @@ def _normalize_l2(vec: list[float]) -> list[float]:
     return [float(x) * inv for x in vec]
 
 
+def _mix_work_visual(cover_vec: list[float], page_vec: list[float]) -> list[float]:
+    c = list(cover_vec or [])
+    p = list(page_vec or [])
+    if c and p and len(c) == len(p):
+        return _normalize_l2([(0.6 * float(c[i]) + 0.4 * float(p[i])) for i in range(len(c))])
+    if c:
+        return _normalize_l2(c)
+    if p:
+        return _normalize_l2(p)
+    return []
+
+
 def _jitter_rng(user_id: str, nonce: str) -> random.Random:
     seed_src = f"{str(user_id or 'default_user')}|{str(nonce or '')}|aeh-jitter-v1"
     seed_hex = hashlib.sha256(seed_src.encode("utf-8")).hexdigest()[:16]
@@ -364,7 +376,7 @@ def _rec_profile_and_scores(cfg: dict[str, Any]) -> tuple[dict[str, float], list
     now_ep = int(time.time())
     start_ep = now_ep - profile_days * 86400
     samples = query_rows(
-        "SELECT e.arcid, e.read_time, w.tags, w.visual_embedding::text as visual_vec "
+        "SELECT e.arcid, e.read_time, w.tags, w.visual_embedding::text as visual_vec, w.page_visual_embedding::text as page_visual_vec "
         "FROM read_events e JOIN works w ON w.arcid = e.arcid "
         "WHERE e.read_time >= %s AND e.read_time < %s ORDER BY e.read_time DESC LIMIT 800",
         (int(start_ep), int(now_ep)),
@@ -373,7 +385,7 @@ def _rec_profile_and_scores(cfg: dict[str, Any]) -> tuple[dict[str, float], list
     if len(samples) < 20:
         inv_start = now_ep - 30 * 86400
         samples = query_rows(
-            "SELECT arcid, tags, visual_embedding::text as visual_vec "
+            "SELECT arcid, tags, visual_embedding::text as visual_vec, page_visual_embedding::text as page_visual_vec "
             "FROM works WHERE date_added IS NOT NULL "
             "AND (CASE WHEN date_added >= 100000000000 THEN date_added / 1000 ELSE date_added END) >= %s "
             "AND (CASE WHEN date_added >= 100000000000 THEN date_added / 1000 ELSE date_added END) < %s "
@@ -389,7 +401,10 @@ def _rec_profile_and_scores(cfg: dict[str, Any]) -> tuple[dict[str, float], list
             tag = str(t or "").strip()
             if tag:
                 counts[tag] = counts.get(tag, 0) + 1
-        vec = _parse_vector_text(str(s.get("visual_vec") or ""))
+        vec = _mix_work_visual(
+            _parse_vector_text(str(s.get("visual_vec") or "")),
+            _parse_vector_text(str(s.get("page_visual_vec") or "")),
+        )
         if vec:
             points.append(vec)
 

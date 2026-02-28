@@ -8,7 +8,12 @@ from ..core.runtime_state import scheduler
 from ..services.auth_service import ensure_auth_schema
 from ..services.config_service import apply_runtime_timezone, ensure_dirs, resolve_config
 from ..services.db_service import db_dsn, query_rows
-from ..services.eh_cover_embedding_service import start_eh_cover_embedding_worker, stop_eh_cover_embedding_worker
+from ..services.eh_cover_embedding_service import (
+    get_eh_cover_embedding_worker_status,
+    start_eh_cover_embedding_worker,
+    stop_eh_cover_embedding_worker,
+    stop_eh_cover_embedding_worker_until_restart,
+)
 from ..services.schedule_service import sync_scheduler
 from ..services.search_service import _item_from_work
 from ..services.vision_service import warmup_siglip_model, _embed_image_siglip, siglip_warmup_ready
@@ -71,6 +76,20 @@ def _on_shutdown() -> None:
     stop_eh_cover_embedding_worker()
     if scheduler.running:
         scheduler.shutdown(wait=False)
+
+
+@router.get("/api/visual-task/status")
+def visual_task_status() -> dict[str, Any]:
+    return {"ok": True, "status": get_eh_cover_embedding_worker_status()}
+
+
+@router.post("/api/visual-task/stop")
+def stop_visual_task() -> dict[str, Any]:
+    stop_eh_cover_embedding_worker_until_restart()
+    return {
+        "ok": True,
+        "message": "visual task stopped; restart container to restore automatic visual embedding",
+    }
 
 
 @router.get("/api/home/history")

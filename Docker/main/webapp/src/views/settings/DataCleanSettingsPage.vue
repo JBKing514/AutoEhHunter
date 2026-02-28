@@ -24,6 +24,9 @@
       <v-col cols="12" md="6"><v-switch v-model="config.TEXT_INGEST_PRUNE_NOT_SEEN" :label="t('settings.text_ingest.prune')" color="primary" inset hide-details /></v-col>
       <v-col cols="12" md="6"><v-switch v-model="config.WORKER_ONLY_MISSING" :label="t('settings.worker.only_missing')" color="primary" inset hide-details /></v-col>
       <v-col cols="12" md="6"><v-text-field v-model="config.TEXT_INGEST_BATCH_SIZE" :label="t('settings.text_ingest.batch')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
+      <v-col cols="12" md="6"><v-text-field v-model="config.LRR_READS_HOURS" :label="t('settings.lrr.reads_hours')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
+      <v-col cols="12" md="6"><v-btn block color="warning" variant="tonal" @click="clearWorksDuplicatesAction">{{ t('settings.data_clean.dedup_works') }}</v-btn></v-col>
+      <v-col cols="12" md="6"><v-btn block color="warning" variant="tonal" @click="openReadEventsConfirm">{{ t('settings.data_clean.clear_read_events') }}</v-btn></v-col>
 
       <v-col cols="12"><v-divider class="my-2" /></v-col>
 
@@ -40,6 +43,18 @@
       </v-col>
     </v-row>
     </div>
+
+    <v-dialog v-model="confirmReadEventsDialog" max-width="460">
+      <v-card>
+        <v-card-title class="text-h6">{{ t('settings.data_clean.clear_read_events') }}</v-card-title>
+        <v-card-text>{{ t('settings.data_clean.clear_read_events_confirm') }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="confirmReadEventsDialog = false">{{ t('settings.unlock.cancel') }}</v-btn>
+          <v-btn color="error" @click="confirmClearReadEventsNow">{{ t('settings.unlock.confirm') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
@@ -49,9 +64,24 @@ import { useSettingsStore } from "../../stores/settingsStore";
 
 export default {
   setup() {
+    const store = useSettingsStore();
+    const confirmReadEventsDialog = ref(false);
+
+    function openReadEventsConfirm() {
+      confirmReadEventsDialog.value = true;
+    }
+
+    async function confirmClearReadEventsNow() {
+      confirmReadEventsDialog.value = false;
+      await store.clearReadEventsAction();
+    }
+
     return {
-      ...useSettingsStore(),
+      ...store,
       settingsLocked: ref(true),
+      confirmReadEventsDialog,
+      openReadEventsConfirm,
+      confirmClearReadEventsNow,
     };
   },
 };

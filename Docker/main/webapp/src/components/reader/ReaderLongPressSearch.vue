@@ -6,19 +6,37 @@
     transition="fade-transition"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <div class="longpress-overlay" @click.self="$emit('update:modelValue', false)">
+    <div class="longpress-overlay" :class="{ 'overlay-open': modelValue }" @click.self="$emit('update:modelValue', false)">
       <div class="fx-bg" :style="bgStyle" @click="$emit('update:modelValue', false)" />
+      <div class="fx-aura" />
+      <div class="fx-noise" />
       <div class="fx-stars">
-        <span v-for="star in stars" :key="star.id" class="fx-star" :style="star.style" />
+        <svg
+          v-for="star in stars"
+          :key="star.id"
+          class="fx-star"
+          :style="star.style"
+          viewBox="0 0 24 24"
+        >
+          <path d="M12 0C12 6.627 17.373 12 24 12C17.373 12 12 17.373 12 24C12 17.373 6.627 12 0 12C6.627 12 12 6.627 12 0Z" fill="currentColor" />
+        </svg>
       </div>
       <button class="return-zone" type="button" @click="$emit('update:modelValue', false)">
         {{ t("reader.search.back_to_reader") }}
       </button>
 
-      <div class="search-sheet" @click.stop>
+      <div
+        ref="sheetRef"
+        class="search-sheet"
+        @click.stop
+        @pointerdown="onSheetPointerDown"
+        @pointermove="onSheetPointerMove"
+        @pointerup="onSheetPointerUp"
+        @pointercancel="onSheetPointerUp"
+      >
         <div class="d-flex align-center justify-space-between mb-2">
-          <div class="text-subtitle-2 text-white">{{ t("reader.search.title") }}</div>
-          <v-btn icon="mdi-close" size="small" variant="text" color="white" @click="$emit('update:modelValue', false)" />
+          <div class="text-subtitle-2">{{ t("reader.search.title") }}</div>
+          <v-btn icon="mdi-close" size="small" variant="text" @click="$emit('update:modelValue', false)" />
         </div>
 
         <v-text-field
@@ -76,7 +94,7 @@ const props = defineProps({
   currentImageSrc: { type: String, default: "" },
 });
 
-defineEmits(["update:modelValue"]);
+const emit = defineEmits(["update:modelValue"]);
 
 const router = useRouter();
 const layoutStore = useLayoutStore();
@@ -86,6 +104,8 @@ const searching = ref(false);
 const resultItems = ref([]);
 const errorText = ref("");
 const stars = ref([]);
+const sheetRef = ref(null);
+const dragState = ref({ active: false, startY: 0, translateY: 0 });
 
 const t = (key, vars = {}) => layoutStore.t(key, vars);
 
@@ -182,12 +202,14 @@ const bgStyle = computed(() => ({
 
 function buildStars() {
   const arr = [];
-  for (let i = 0; i < 32; i += 1) {
-    const size = 8 + Math.random() * 16;
+  const colors = ["#FFFFFF", "#8AB4F8", "#C58AF9", "#FDE293"];
+  for (let i = 0; i < 28; i += 1) {
+    const size = 12 + Math.random() * 20;
     const left = Math.random() * 100;
     const top = Math.random() * 70;
-    const delay = Math.random() * 4;
-    const dur = 2.8 + Math.random() * 4.5;
+    const delay = Math.random() * 3;
+    const dur = 2.5 + Math.random() * 3;
+    const color = colors[Math.floor(Math.random() * colors.length)];
     arr.push({
       id: `s-${i}`,
       style: {
@@ -195,12 +217,60 @@ function buildStars() {
         height: `${size}px`,
         left: `${left}%`,
         top: `${top}%`,
+        color,
         animationDelay: `${delay}s`,
         animationDuration: `${dur}s`,
       },
     });
   }
   stars.value = arr;
+}
+
+function onSheetPointerDown(event) {
+  if (event?.pointerType === "mouse" && Number(event?.button) !== 0) return;
+  if (sheetRef.value && Number(sheetRef.value.scrollTop || 0) > 0) return;
+  dragState.value = {
+    active: true,
+    startY: Number(event?.clientY || 0),
+    translateY: 0,
+  };
+  const el = sheetRef.value;
+  if (el) {
+    el.style.transition = "none";
+  }
+}
+
+function onSheetPointerMove(event) {
+  if (!dragState.value.active) return;
+  const dy = Number(event?.clientY || 0) - dragState.value.startY;
+  const offset = Math.max(0, dy);
+  dragState.value.translateY = offset;
+  const el = sheetRef.value;
+  if (el) {
+    el.style.transform = `translateY(${offset}px)`;
+  }
+}
+
+function onSheetPointerUp() {
+  if (!dragState.value.active) return;
+  const moved = Number(dragState.value.translateY || 0);
+  dragState.value = { active: false, startY: 0, translateY: 0 };
+  const el = sheetRef.value;
+  if (el) {
+    el.style.transition = "transform 220ms ease";
+    el.style.transform = "translateY(0)";
+  }
+  if (moved > 120) {
+    emitClose();
+  }
+}
+
+function emitClose() {
+  query.value = "";
+  resultItems.value = [];
+  errorText.value = "";
+  searching.value = false;
+  emit("update:modelValue", false);
 }
 
 watch(() => props.modelValue, (open) => {
@@ -231,8 +301,36 @@ onMounted(() => {
   height: 100%;
   background-size: cover;
   background-position: center;
-  filter: blur(24px) saturate(0.72) brightness(0.62);
-  transform: scale(1.08);
+  filter: blur(32px) saturate(1.2) brightness(0.4);
+  transform: scale(1.1);
+  opacity: 0;
+}
+
+.overlay-open .fx-bg {
+  animation: bg-in 240ms ease-out forwards;
+}
+
+.fx-aura {
+  position: absolute;
+  inset: -20%;
+  width: 140%;
+  height: 140%;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(138, 180, 248, 0.25) 0%, transparent 40%),
+    radial-gradient(circle at 70% 60%, rgba(197, 138, 249, 0.2) 0%, transparent 40%),
+    radial-gradient(circle at 50% 80%, rgba(253, 226, 147, 0.15) 0%, transparent 40%);
+  mix-blend-mode: color-dodge;
+  pointer-events: none;
+  animation: aura-drift 12s ease-in-out infinite alternate;
+}
+
+.fx-noise {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.04;
+  pointer-events: none;
+  mix-blend-mode: overlay;
 }
 
 .fx-stars {
@@ -258,27 +356,11 @@ onMounted(() => {
 
 .fx-star {
   position: absolute;
-  transform: rotate(45deg);
-  opacity: 0.72;
-  animation-name: twinkle;
-  animation-timing-function: ease-in-out;
+  opacity: 0;
+  animation-name: ai-twinkle;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   animation-iteration-count: infinite;
-}
-
-.fx-star::before,
-.fx-star::after {
-  content: "";
-  position: absolute;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 999px;
-}
-
-.fx-star::before {
-  inset: 45% 0;
-}
-
-.fx-star::after {
-  inset: 0 45%;
+  filter: drop-shadow(0 0 8px currentColor);
 }
 
 .search-sheet {
@@ -288,21 +370,63 @@ onMounted(() => {
   bottom: 0;
   padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
   border-radius: 16px 16px 0 0;
-  background: rgba(12, 14, 20, 0.86);
-  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  background: color-mix(in srgb, rgb(var(--v-theme-surface)) 88%, transparent);
+  border-top: 1px solid color-mix(in srgb, rgb(var(--v-theme-on-surface)) 16%, transparent);
   backdrop-filter: blur(10px);
   max-height: min(62vh, 560px);
   overflow-y: auto;
+  color: rgb(var(--v-theme-on-surface));
+  transform: translateY(18px);
+  opacity: 0;
+  animation: sheet-in 300ms cubic-bezier(0.22, 1, 0.36, 1) 160ms forwards;
 }
 
-@keyframes twinkle {
-  0%, 100% {
-    opacity: 0.28;
-    transform: rotate(45deg) scale(0.75);
+@keyframes bg-in {
+  0% {
+    opacity: 0;
+    filter: blur(12px) saturate(0.9) brightness(0.22);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(32px) saturate(1.2) brightness(0.4);
+  }
+}
+
+@keyframes aura-drift {
+  0% {
+    transform: rotate(0deg) scale(1);
   }
   50% {
-    opacity: 0.92;
-    transform: rotate(45deg) scale(1.12);
+    transform: rotate(3deg) scale(1.05) translate(-2%, 2%);
+  }
+  100% {
+    transform: rotate(-2deg) scale(0.95) translate(2%, -2%);
+  }
+}
+
+@keyframes ai-twinkle {
+  0% {
+    opacity: 0;
+    transform: scale(0.2) rotate(-15deg);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.2) rotate(15deg);
+  }
+}
+
+@keyframes sheet-in {
+  0% {
+    transform: translateY(26px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
   }
 }
 
@@ -314,8 +438,8 @@ onMounted(() => {
 
 .result-card {
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, rgb(var(--v-theme-surface-variant)) 42%, transparent);
+  border: 1px solid color-mix(in srgb, rgb(var(--v-theme-on-surface)) 14%, transparent);
   cursor: pointer;
 }
 

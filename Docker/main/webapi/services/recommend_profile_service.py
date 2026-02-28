@@ -72,6 +72,18 @@ def _parse_key(key: str) -> tuple[int, str]:
     return int(m.group(1)), str(m.group(2) or "").strip()
 
 
+def _mix_visual_vectors(cover: list[float], page: list[float]) -> list[float]:
+    c = list(cover or [])
+    p = list(page or [])
+    if c and p and len(c) == len(p):
+        return _normalize_l2([(0.6 * float(c[i]) + 0.4 * float(p[i])) for i in range(len(c))])
+    if c:
+        return _normalize_l2(c)
+    if p:
+        return _normalize_l2(p)
+    return []
+
+
 def get_user_profile_vector(user_id: str) -> list[float]:
     dsn = db_dsn()
     if not dsn:
@@ -111,12 +123,13 @@ def apply_feedback_events(user_id: str, events: list[dict[str, Any]]) -> None:
         return
 
     gid_tok: list[tuple[int, str]] = []
+    work_arcids: list[str] = []
     for key in keys:
         gid, tok = _parse_key(key)
         if gid and tok:
             gid_tok.append((gid, tok))
-    if not gid_tok:
-        return
+        else:
+            work_arcids.append(str(key).strip())
 
     vec_map: dict[str, list[float]] = {}
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
@@ -136,6 +149,20 @@ def apply_feedback_events(user_id: str, events: list[dict[str, Any]]) -> None:
                 v = _project_1024(_parse_vector_text(str(r.get("vec") or "")))
                 if len(v) == 1024:
                     vec_map[f"eh:{gid}:{tok.lower()}"] = _normalize_l2(v)
+
+            for arcid in work_arcids:
+                cur.execute(
+                    "SELECT visual_embedding::text AS cover_vec, page_visual_embedding::text AS page_vec "
+                    "FROM works WHERE arcid = %s LIMIT 1",
+                    (str(arcid),),
+                )
+                r = cur.fetchone() or {}
+                cover_v = _parse_vector_text(str(r.get("cover_vec") or ""))
+                page_v = _parse_vector_text(str(r.get("page_vec") or ""))
+                mixed = _mix_visual_vectors(cover_v, page_v)
+                v = _project_1024(mixed)
+                if len(v) == 1024 and any(abs(float(x)) > 1e-12 for x in v):
+                    vec_map[str(arcid).lower()] = _normalize_l2(v)
 
             changed = False
             for e in valid_events:

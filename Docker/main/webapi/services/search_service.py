@@ -516,16 +516,33 @@ def _search_by_visual_vector(
 ) -> dict[str, Any]:
     vtxt = _vector_literal(vec)
     items: list[dict[str, Any]] = []
+    work_cover_w = max(0.0, float(cfg.get("SEARCH_WORK_COVER_WEIGHT", 0.6) or 0.6))
+    work_page_w = max(0.0, float(cfg.get("SEARCH_WORK_PAGE_WEIGHT", 0.4) or 0.4))
+    wp_sum = work_cover_w + work_page_w
+    if wp_sum <= 0:
+        work_cover_w, work_page_w = 0.6, 0.4
+        wp_sum = 1.0
+    work_cover_w /= wp_sum
+    work_page_w /= wp_sum
     if scope in ("works", "both"):
         works_rows = query_rows(
             "SELECT arcid, title, tags, eh_posted, date_added, lastreadtime, "
-            "(visual_embedding <=> (%s)::vector) AS dist "
-            "FROM works WHERE visual_embedding IS NOT NULL "
-            "ORDER BY visual_embedding <=> (%s)::vector LIMIT %s",
-            (vtxt, vtxt, int(limit)),
+            "(CASE WHEN visual_embedding IS NOT NULL THEN (visual_embedding <=> (%s)::vector) END) AS dist_cover, "
+            "(CASE WHEN page_visual_embedding IS NOT NULL THEN (page_visual_embedding <=> (%s)::vector) END) AS dist_page "
+            "FROM works "
+            "WHERE visual_embedding IS NOT NULL OR page_visual_embedding IS NOT NULL "
+            "ORDER BY LEAST(COALESCE(visual_embedding <=> (%s)::vector, 1e9), COALESCE(page_visual_embedding <=> (%s)::vector, 1e9)) "
+            "LIMIT %s",
+            (vtxt, vtxt, vtxt, vtxt, int(limit * 2)),
         )
         for r in works_rows:
-            score = 1.0 / (1.0 + float(r.get("dist") or 0.0))
+            cover_sim = 0.0
+            page_sim = 0.0
+            if r.get("dist_cover") is not None:
+                cover_sim = 1.0 / (1.0 + float(r.get("dist_cover") or 0.0))
+            if r.get("dist_page") is not None:
+                page_sim = 1.0 / (1.0 + float(r.get("dist_page") or 0.0))
+            score = (work_cover_w * cover_sim) + (work_page_w * page_sim)
             items.append(_item_from_work({**r, "score": score}, cfg))
     if scope in ("eh", "both"):
         eh_rows = query_rows(
@@ -553,6 +570,7 @@ def _scenario_weights(cfg: dict[str, Any], scenario: str) -> dict[str, float]:
     if sc == "visual":
         return {
             "visual": float(cfg.get("SEARCH_WEIGHT_VISUAL", 2.0) or 2.0),
+            "page_visual": float(cfg.get("SEARCH_WEIGHT_PAGE_VISUAL", 1.2) or 1.2),
             "eh_visual": float(cfg.get("SEARCH_WEIGHT_EH_VISUAL", 1.6) or 1.6),
             "desc": float(cfg.get("SEARCH_WEIGHT_DESC", 0.8) or 0.8),
             "text": float(cfg.get("SEARCH_WEIGHT_TEXT", 0.7) or 0.7),
@@ -561,6 +579,7 @@ def _scenario_weights(cfg: dict[str, Any], scenario: str) -> dict[str, float]:
     if sc == "mixed":
         return {
             "visual": float(cfg.get("SEARCH_WEIGHT_MIXED_VISUAL", 1.2) or 1.2),
+            "page_visual": float(cfg.get("SEARCH_WEIGHT_MIXED_PAGE_VISUAL", 0.9) or 0.9),
             "eh_visual": float(cfg.get("SEARCH_WEIGHT_MIXED_EH_VISUAL", 1.0) or 1.0),
             "desc": float(cfg.get("SEARCH_WEIGHT_MIXED_DESC", 1.4) or 1.4),
             "text": float(cfg.get("SEARCH_WEIGHT_MIXED_TEXT", 0.9) or 0.9),
@@ -568,6 +587,7 @@ def _scenario_weights(cfg: dict[str, Any], scenario: str) -> dict[str, float]:
         }
     return {
         "visual": float(cfg.get("SEARCH_WEIGHT_PLOT_VISUAL", 0.6) or 0.6),
+        "page_visual": float(cfg.get("SEARCH_WEIGHT_PLOT_PAGE_VISUAL", 0.4) or 0.4),
         "eh_visual": float(cfg.get("SEARCH_WEIGHT_PLOT_EH_VISUAL", 0.5) or 0.5),
         "desc": float(cfg.get("SEARCH_WEIGHT_PLOT_DESC", 2.0) or 2.0),
         "text": float(cfg.get("SEARCH_WEIGHT_PLOT_TEXT", 0.9) or 0.9),
@@ -627,7 +647,7 @@ def _agent_nl_search(
     filter_tags = merged_tags if hard_filter else []
 
     n = max(30, int(limit) * 2)
-    channels: dict[str, list[str]] = {"text": [], "eh_text": [], "desc": [], "visual": [], "eh_visual": []}
+    channels: dict[str, list[str]] = {"text": [], "eh_text": [], "desc": [], "visual": [], "page_visual": [], "eh_visual": []}
     try:
         if scope in ("works", "both"):
             rows = query_rows(
@@ -677,6 +697,12 @@ def _agent_nl_search(
                 (vtxt2, int(n)),
             )
             channels["visual"] = [f"work:{str(r.get('arcid') or '').strip()}" for r in rows if str(r.get("arcid") or "").strip()]
+            rows = query_rows(
+                "SELECT arcid FROM works WHERE page_visual_embedding IS NOT NULL "
+                "ORDER BY page_visual_embedding <=> (%s)::vector LIMIT %s",
+                (vtxt2, int(n)),
+            )
+            channels["page_visual"] = [f"work:{str(r.get('arcid') or '').strip()}" for r in rows if str(r.get("arcid") or "").strip()]
         if scope in ("eh", "both"):
             rows = query_rows(
                 "SELECT gid, token FROM eh_works WHERE cover_embedding IS NOT NULL "

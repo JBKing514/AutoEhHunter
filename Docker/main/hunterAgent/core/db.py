@@ -332,7 +332,8 @@ def get_profile_samples_from_reads(
     limit: int = 800,
 ) -> List[Dict[str, Any]]:
     sql = (
-        "SELECT e.arcid, e.read_time, w.title, w.tags, w.visual_embedding::text as visual_vec "
+        "SELECT e.arcid, e.read_time, w.title, w.tags, "
+        "w.visual_embedding::text as visual_vec, w.page_visual_embedding::text as page_visual_vec "
         "FROM read_events e "
         "JOIN works w ON w.arcid = e.arcid "
         "WHERE e.read_time >= %s AND e.read_time < %s "
@@ -348,6 +349,7 @@ def get_profile_samples_from_reads(
             for r in rows:
                 d = dict(r)
                 d["visual_embedding"] = _parse_vector_text(str(d.pop("visual_vec", "") or ""))
+                d["page_visual_embedding"] = _parse_vector_text(str(d.pop("page_visual_vec", "") or ""))
                 out.append(d)
             return out
     finally:
@@ -361,7 +363,7 @@ def get_profile_samples_from_inventory(
     limit: int = 800,
 ) -> List[Dict[str, Any]]:
     sql = (
-        "SELECT arcid, title, tags, visual_embedding::text as visual_vec "
+        "SELECT arcid, title, tags, visual_embedding::text as visual_vec, page_visual_embedding::text as page_visual_vec "
         "FROM works "
         "WHERE date_added IS NOT NULL "
         "AND (CASE WHEN date_added >= 100000000000 THEN date_added / 1000 ELSE date_added END) >= %s "
@@ -378,6 +380,7 @@ def get_profile_samples_from_inventory(
             for r in rows:
                 d = dict(r)
                 d["visual_embedding"] = _parse_vector_text(str(d.pop("visual_vec", "") or ""))
+                d["page_visual_embedding"] = _parse_vector_text(str(d.pop("page_visual_vec", "") or ""))
                 out.append(d)
             return out
     finally:

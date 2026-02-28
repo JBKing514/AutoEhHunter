@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS works (
     -- Embeddings (pgvector)
     desc_embedding   vector(1024),
     visual_embedding vector(1152),
+    page_visual_embedding vector(1152),
     cover_embedding_status text NOT NULL DEFAULT 'pending',
 
     -- Timestamp-like fields extracted from tags (epoch seconds)
@@ -36,12 +37,13 @@ CREATE TABLE IF NOT EXISTS works (
 ALTER TABLE works ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE works ADD COLUMN IF NOT EXISTS desc_embedding vector(1024);
 ALTER TABLE works ADD COLUMN IF NOT EXISTS visual_embedding vector(1152);
+ALTER TABLE works ADD COLUMN IF NOT EXISTS page_visual_embedding vector(1152);
 ALTER TABLE works ADD COLUMN IF NOT EXISTS cover_embedding_status text NOT NULL DEFAULT 'pending';
 
 UPDATE works
 SET cover_embedding_status = CASE
-    WHEN visual_embedding IS NOT NULL THEN 'complete'
-    WHEN cover_embedding_status IN ('pending', 'processing', 'complete', 'fail') THEN cover_embedding_status
+    WHEN visual_embedding IS NOT NULL AND page_visual_embedding IS NOT NULL THEN 'complete'
+    WHEN cover_embedding_status IN ('processing', 'fail') THEN cover_embedding_status
     ELSE 'pending'
 END;
 
@@ -68,6 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_works_cover_status ON works (cover_embedding_stat
 -- Vector search indexes (HNSW)
 CREATE INDEX IF NOT EXISTS idx_works_desc_vec ON works USING hnsw (desc_embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_works_visual_vec ON works USING hnsw (visual_embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_works_page_visual_vec ON works USING hnsw (page_visual_embedding vector_cosine_ops);
 
 CREATE TABLE IF NOT EXISTS read_events (
     id           bigserial PRIMARY KEY,
