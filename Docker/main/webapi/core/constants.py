@@ -128,6 +128,7 @@ CONFIG_SPECS: dict[str, dict[str, Any]] = {
     "LLM_MODEL_CUSTOM": {"type": "text", "default": ""},
     "EMB_MODEL_CUSTOM": {"type": "text", "default": ""},
     "SIGLIP_MODEL": {"type": "text", "default": "google/siglip-so400m-patch14-384"},
+    "SIGLIP_WORKER_ENABLED": {"type": "bool", "default": True},
     "SIGLIP_DEVICE": {"type": "text", "default": "cpu"},
     "WORKER_BATCH": {"type": "int", "default": 32, "min": 1, "max": 512},
     "WORKER_SLEEP": {"type": "float", "default": 0.0, "min": 0.0, "max": 60.0},

@@ -4,6 +4,8 @@ import {
   clearReadEvents,
   clearRecommendProfile,
   clearRecommendTouches,
+  disableVisualTask,
+  enableVisualTask,
   clearRuntimeDeps,
   clearSiglip,
   clearThumbCache,
@@ -272,6 +274,7 @@ export const useSettingsStore = defineStore("settings", () => {
       INGEST_VL_MODEL_CUSTOM: "settings.provider.ingest_vl_model_custom",
       INGEST_EMB_MODEL_CUSTOM: "settings.provider.ingest_emb_model_custom",
       SIGLIP_MODEL: "settings.provider.siglip_model",
+      SIGLIP_WORKER_ENABLED: "settings.provider.siglip_worker_enabled",
       WORKER_BATCH: "settings.provider.worker_batch",
       WORKER_SLEEP: "settings.provider.worker_sleep",
       MEMORY_SHORT_TERM_ENABLED: "settings.memory.short_term_enabled",
@@ -474,6 +477,7 @@ export const useSettingsStore = defineStore("settings", () => {
       config.value.READER_WHEEL_CURVE = Math.max(0, Math.min(100, mapped));
     }
     if (config.value.REC_SHOW_PAGE_COUNT === undefined) config.value.REC_SHOW_PAGE_COUNT = true;
+    if (config.value.SIGLIP_WORKER_ENABLED === undefined) config.value.SIGLIP_WORKER_ENABLED = true;
     if (config.value.READER_PRELOAD_COUNT === undefined || config.value.READER_PRELOAD_COUNT === null || config.value.READER_PRELOAD_COUNT === "") {
       config.value.READER_PRELOAD_COUNT = 2;
     }
@@ -708,6 +712,24 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  async function toggleSiglipWorkerEnabled(enabled) {
+    const next = !!enabled;
+    const prev = !!config.value.SIGLIP_WORKER_ENABLED;
+    config.value.SIGLIP_WORKER_ENABLED = next;
+    try {
+      if (next) {
+        await enableVisualTask();
+      } else {
+        await disableVisualTask();
+      }
+      await saveConfig();
+      notify(t(next ? "settings.siglip_worker.enabled_toast" : "settings.siglip_worker.disabled_toast"), next ? "success" : "warning");
+    } catch (e) {
+      config.value.SIGLIP_WORKER_ENABLED = prev;
+      notify(String(e?.response?.data?.detail || e), "warning");
+    }
+  }
+
   async function loadSkillsData() {
     try {
       const res = await getSkills();
@@ -929,6 +951,7 @@ export const useSettingsStore = defineStore("settings", () => {
     clearRecommendProfileAction,
     clearWorksDuplicatesAction,
     clearReadEventsAction,
+    toggleSiglipWorkerEnabled,
     loadSkillsData,
     onPluginUploadChange,
     loadDevSchemaData,

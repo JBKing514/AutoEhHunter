@@ -15,6 +15,15 @@ export const useDashboardStore = defineStore("dashboard", () => {
   const homeRecommendCanExpand = ref(true);
   const homeRecommendJitterNonce = ref(0);
   const homeSearchState = ref({ items: [], cursor: "", hasMore: false, loading: false, error: "" });
+  const localSortOpen = ref(false);
+  const localSortBy = ref("xp");
+  const localSortOrder = ref("desc");
+  const localSortAsc = computed({
+    get: () => String(localSortOrder.value || "desc") === "asc",
+    set: (v) => {
+      localSortOrder.value = v ? "asc" : "desc";
+    },
+  });
   const homeFiltersOpen = ref(false);
   const homeFilters = ref({ categories: [], tags: [] });
   const filterTagInput = ref("");
@@ -442,6 +451,22 @@ export const useDashboardStore = defineStore("dashboard", () => {
     await resetHomeFeed();
   }
 
+  async function quickShuffleToTop() {
+    scrollToTop();
+    await shuffleRecommendBatch();
+  }
+
+  function openLocalSortDialog() {
+    localSortOpen.value = true;
+  }
+
+  async function applyLocalSort() {
+    localSortOpen.value = false;
+    if (homeTab.value === "local") {
+      await resetHomeFeed();
+    }
+  }
+
   async function tryExpandRecommendDepth() {
     if (homeTab.value !== "recommend") return false;
     if (!homeRecommendCanExpand.value) return false;
@@ -594,6 +619,10 @@ export const useDashboardStore = defineStore("dashboard", () => {
         params.depth = Number(homeRecommendDepth.value || 1);
         params.jitter = Number(homeRecommendJitterNonce.value || 0) > 0;
         params.jitter_nonce = String(homeRecommendJitterNonce.value || 0);
+      }
+      if (homeTab.value === "local") {
+        params.sort_by = String(localSortBy.value || "xp");
+        params.sort_order = String(localSortOrder.value || "desc");
       }
       const res = homeTab.value === "history"
         ? await getHomeHistory(params)
@@ -772,6 +801,10 @@ export const useDashboardStore = defineStore("dashboard", () => {
     homeRecommendCanExpand,
     homeRecommendJitterNonce,
     homeSearchState,
+    localSortOpen,
+    localSortBy,
+    localSortOrder,
+    localSortAsc,
     homeFiltersOpen,
     homeFilters,
     filterTagInput,
@@ -815,6 +848,9 @@ export const useDashboardStore = defineStore("dashboard", () => {
     resetRecommendExposureObserver,
     tryExpandRecommendDepth,
     shuffleRecommendBatch,
+    quickShuffleToTop,
+    openLocalSortDialog,
+    applyLocalSort,
     updateViewportFlags,
     onWindowScroll,
     runQuickSearch,

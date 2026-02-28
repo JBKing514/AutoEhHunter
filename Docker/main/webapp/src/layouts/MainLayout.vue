@@ -45,6 +45,26 @@
     <div v-if="!hideReaderChrome && ui.tab === 'dashboard' && dashboardStore.showScrollQuickActions" class="quick-fab-wrap" :style="dashboardStore.quickFabStyle">
       <v-btn color="secondary" icon="mdi-magnify" size="large" class="quick-fab" @click="dashboardStore.quickSearchOpen = true" />
       <v-btn color="info" icon="mdi-filter-variant" size="large" class="quick-fab" @click="dashboardStore.homeFiltersOpen = true" />
+      <v-btn
+        v-if="dashboardTab === 'local'"
+        color="primary"
+        icon="mdi-sort"
+        size="large"
+        class="quick-fab"
+        @click="dashboardStore.openLocalSortDialog()"
+      />
+      <v-btn
+        v-else-if="dashboardTab === 'recommend'"
+        color="primary"
+        icon="mdi-shuffle-variant"
+        size="large"
+        class="quick-fab"
+        @click="dashboardStore.quickShuffleToTop()"
+      />
+      <v-btn v-else color="primary" icon="mdi-arrow-up" size="large" class="quick-fab" @click="dashboardStore.scrollToTop" />
+    </div>
+
+    <div v-if="!hideReaderChrome && ui.tab === 'dashboard' && dashboardStore.showScrollQuickActions" class="chat-top-wrap">
       <v-btn color="primary" icon="mdi-arrow-up" size="large" class="quick-fab" @click="dashboardStore.scrollToTop" />
     </div>
 
@@ -94,4 +114,6 @@ const hideReaderChrome = computed(() => {
   if (route.name !== "reader") return false;
   return settingsStore.config?.READER_HIDE_APP_UI !== false;
 });
+
+const dashboardTab = computed(() => String(dashboardStore.homeTab || "recommend"));
 </script>

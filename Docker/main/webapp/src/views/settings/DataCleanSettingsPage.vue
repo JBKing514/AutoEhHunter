@@ -16,6 +16,7 @@
       <v-col cols="12" md="6"><v-text-field v-model="config.INGEST_VL_MODEL_CUSTOM" :label="t('settings.provider.ingest_vl_model_custom')" clearable variant="outlined" density="compact" color="primary" /></v-col>
       <v-col cols="12" md="6"><v-text-field v-model="config.INGEST_EMB_MODEL_CUSTOM" :label="t('settings.provider.ingest_emb_model_custom')" clearable variant="outlined" density="compact" color="primary" /></v-col>
       <v-col cols="12" md="6"><v-text-field v-model="config.SIGLIP_MODEL" :label="t('settings.provider.siglip_model')" variant="outlined" density="compact" color="primary" /></v-col>
+      <v-col cols="12" md="6"><v-switch v-model="config.SIGLIP_WORKER_ENABLED" :label="t('settings.provider.siglip_worker_enabled')" color="primary" inset hide-details @update:model-value="onToggleSiglipWorker" /></v-col>
 
       <v-col cols="12"><v-divider class="my-2" /></v-col>
 
@@ -76,12 +77,17 @@ export default {
       await store.clearReadEventsAction();
     }
 
+    async function onToggleSiglipWorker(v) {
+      await store.toggleSiglipWorkerEnabled(!!v);
+    }
+
     return {
       ...store,
       settingsLocked: ref(true),
       confirmReadEventsDialog,
       openReadEventsConfirm,
       confirmClearReadEventsNow,
+      onToggleSiglipWorker,
     };
   },
 };

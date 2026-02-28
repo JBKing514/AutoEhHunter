@@ -31,6 +31,7 @@ from ..services.config_service import (
 )
 from ..services.db_service import _build_dsn, db_dsn, query_rows
 from ..services.dev_schema import inject_schema_sql, save_schema_upload, schema_status
+from ..services.eh_cover_embedding_service import disable_eh_cover_embedding_worker, enable_eh_cover_embedding_worker
 from ..services.schedule_service import sync_scheduler
 from ..services.search_service import _clear_thumb_cache, _thumb_cache_stats
 from ..services.setup_service import init_core_schema, validate_db_connection, validate_lrr
@@ -283,6 +284,13 @@ def update_config(req: ConfigUpdateRequest) -> dict[str, Any]:
     new_cfg["POSTGRES_DSN"] = _build_dsn(new_cfg)
     _save_json_config(new_cfg)
     ok_db, db_err = _save_db_config(new_cfg.get("POSTGRES_DSN", ""), new_cfg)
+    try:
+        if bool(new_cfg.get("SIGLIP_WORKER_ENABLED", True)):
+            enable_eh_cover_embedding_worker()
+        else:
+            disable_eh_cover_embedding_worker()
+    except Exception:
+        pass
     apply_runtime_timezone()
     sync_scheduler()
     return {"ok": True, "saved_json": True, "saved_db": ok_db, "db_error": db_err}

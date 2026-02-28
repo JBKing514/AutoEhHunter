@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from .db_service import query_rows
+from .rec_service_local import get_local_recommendation_items_cached
 from .recommend_feedback_service import get_action_counts, get_interaction_revision, recommendation_key
 from .recommend_profile_service import get_user_profile_vector
 from .search_service import _item_from_eh
@@ -449,6 +450,7 @@ def _build_recommendation_items(
     depth: int = 1,
     jitter: bool = False,
     jitter_nonce: str = "",
+    visual_scope: str = "external",
 ) -> dict[str, Any]:
     # REC_TEMPERATURE: base temperature T, configurable by user (default 0.3)
     # mode offsets: explore +0.5, precise -0.2
@@ -484,6 +486,11 @@ def _build_recommendation_items(
     impression_penalty = impression_penalty_pct / 100.0
 
     tag_scores, centroids, profile_source, sample_count = _rec_profile_and_scores(cfg)
+    scope = str(visual_scope or "external").strip().lower()
+    use_internal = scope == "internal"
+    if use_internal:
+        return get_local_recommendation_items_cached(cfg, user_id=str(user_id or "default_user"), sort_order="desc")
+
     now_ep = int(time.time())
     start_ep = now_ep - rec_hours * 3600
     candidates = query_rows(
@@ -552,7 +559,7 @@ def _build_recommendation_items(
                 vscore = 1.0 / (1.0 + float(min_dist))
                 U_vis = 1.0 - vscore  # ∈ [0,1): d→0 gives U_vis→0, d→∞ gives U_vis→1
 
-        rec_key = recommendation_key(gid, token)
+        rec_key = recommendation_key(gid, token) if (gid and token) else ""
         touch_n = int(touch_counts.get(rec_key, 0)) if rec_key else 0
         impression_n = int(impression_counts.get(rec_key, 0)) if rec_key else 0
         dislike_n = int(dislike_counts.get(rec_key, 0)) if rec_key else 0
@@ -630,8 +637,9 @@ def _build_recommendation_items(
             }
         )
     scored.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    out_items = [_item_from_eh(x, cfg) | {"signals": x.get("signals") or {}} for x in scored]
     return {
-        "items": [_item_from_eh(x, cfg) | {"signals": x.get("signals") or {}} for x in scored],
+        "items": out_items,
         "meta": {
             "profile_source": profile_source,
             "profile_sample_count": int(sample_count),
@@ -655,6 +663,7 @@ def _build_recommendation_items(
             "excluded_by_touch": skipped_touch,
             "excluded_by_dislike": skipped_dislike,
             "excluded_by_read": skipped_read,
+            "visual_scope": "external",
         },
     }
 
@@ -670,6 +679,7 @@ def _get_recommendation_items_cached(
     depth: int = 1,
     jitter: bool = False,
     jitter_nonce: str = "",
+    visual_scope: str = "external",
 ) -> dict[str, Any]:
     ttl = max(60, int(cfg.get("REC_CLUSTER_CACHE_TTL_S", 900)))
     mode_s = str(mode or "").strip().lower()
@@ -692,6 +702,7 @@ def _get_recommendation_items_cached(
             str(cfg.get("REC_TOUCH_PENALTY_PCT")),
             str(cfg.get("REC_IMPRESSION_PENALTY_PCT")),
             str(cfg.get("REC_DYNAMIC_EXPAND_ENABLED")),
+            str(visual_scope or "external"),
             str(bool(jitter)),
             str(jitter_nonce or ""),
         ]
@@ -710,6 +721,7 @@ def _get_recommendation_items_cached(
         depth=depth,
         jitter=bool(jitter),
         jitter_nonce=str(jitter_nonce or ""),
+        visual_scope=str(visual_scope or "external"),
     )
     with _home_rec_cache_lock:
         _home_rec_cache["built_at"] = now_t
@@ -726,6 +738,7 @@ def _cached_home_recommend(
     depth: int = 1,
     jitter: bool = False,
     jitter_nonce: str = "",
+    visual_scope: str = "external",
 ) -> dict[str, Any]:
     return _get_recommendation_items_cached(
         cfg,
@@ -734,6 +747,7 @@ def _cached_home_recommend(
         depth=depth,
         jitter=jitter,
         jitter_nonce=jitter_nonce,
+        visual_scope=visual_scope,
     )
 
 

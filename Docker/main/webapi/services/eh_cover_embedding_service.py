@@ -26,6 +26,7 @@ _worker_status_lock = threading.Lock()
 _worker_status: dict[str, Any] = {
     "running": False,
     "stopped_by_user": False,
+    "disabled_by_config": False,
     "table": "",
     "phase": "idle",
     "picked": 0,
@@ -33,6 +34,11 @@ _worker_status: dict[str, Any] = {
     "failed": 0,
     "current": 0,
     "total": 0,
+    "last_error_seq": 0,
+    "last_error_message": "",
+    "last_error_traceback": "",
+    "last_error_table": "",
+    "last_error_item": "",
     "updated_at": int(time.time()),
 }
 
@@ -46,6 +52,23 @@ def _update_worker_status(**kwargs: Any) -> None:
 def _read_worker_status() -> dict[str, Any]:
     with _worker_status_lock:
         return dict(_worker_status)
+
+
+def _record_worker_error(*, table: str, item: str, err: Exception) -> None:
+    msg = str(err or "").strip()
+    tb = traceback.format_exc()
+    with _worker_status_lock:
+        seq = int(_worker_status.get("last_error_seq") or 0) + 1
+        _worker_status.update(
+            {
+                "last_error_seq": seq,
+                "last_error_message": msg,
+                "last_error_traceback": str(tb or "").strip(),
+                "last_error_table": str(table or "").strip(),
+                "last_error_item": str(item or "").strip(),
+                "updated_at": int(time.time()),
+            }
+        )
 
 
 def _vector_literal(vec: list[float]) -> str:
@@ -475,6 +498,7 @@ def run_eh_cover_embedding_once(*, include_fail: bool = False, limit: int = 12) 
                     except Exception as e:
                         print(f"[eh_cover_embedding] gid={gid} token={token} failed: {e}", file=sys.stderr)
                         print(traceback.format_exc(), file=sys.stderr)
+                        _record_worker_error(table="eh_works", item=f"gid={gid}, token={token}", err=e)
                         _mark_fail(conn, gid, token)
                         conn.commit()
                         failed_eh += 1
@@ -535,6 +559,7 @@ def run_eh_cover_embedding_once(*, include_fail: bool = False, limit: int = 12) 
                         except Exception as e:
                             print(f"[work_cover_embedding] arcid={arcid} failed: {e}", file=sys.stderr)
                             print(traceback.format_exc(), file=sys.stderr)
+                            _record_worker_error(table="works", item=f"arcid={arcid}", err=e)
                             _mark_work_fail(conn, arcid)
                             conn.commit()
                             failed_works += 1
@@ -543,6 +568,8 @@ def run_eh_cover_embedding_once(*, include_fail: bool = False, limit: int = 12) 
                     _release_table_slot("works")
     except psycopg.OperationalError:
         return {"picked": 0, "completed": 0, "failed": 0}
+
+    _update_worker_status(phase="idle", table="", current=0, total=0)
 
     return {
         "picked": picked_eh + picked_works,
@@ -576,7 +603,8 @@ def _worker_loop() -> None:
 def start_eh_cover_embedding_worker() -> None:
     global _worker_thread
     with _worker_lock:
-        if bool(_read_worker_status().get("stopped_by_user")):
+        st = _read_worker_status()
+        if bool(st.get("stopped_by_user")) or bool(st.get("disabled_by_config")):
             return
         if _worker_thread and _worker_thread.is_alive():
             return
@@ -594,6 +622,16 @@ def stop_eh_cover_embedding_worker() -> None:
 def stop_eh_cover_embedding_worker_until_restart() -> None:
     _update_worker_status(stopped_by_user=True)
     _worker_stop.set()
+
+
+def disable_eh_cover_embedding_worker() -> None:
+    _update_worker_status(disabled_by_config=True, stopped_by_user=True, running=False, phase="stopped", table="", current=0, total=0)
+    _worker_stop.set()
+
+
+def enable_eh_cover_embedding_worker() -> None:
+    _update_worker_status(disabled_by_config=False, stopped_by_user=False)
+    start_eh_cover_embedding_worker()
 
 
 def get_eh_cover_embedding_worker_status() -> dict[str, Any]:

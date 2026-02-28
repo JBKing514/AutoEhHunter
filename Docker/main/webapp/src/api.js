@@ -230,6 +230,16 @@ export async function stopVisualTask() {
   return data;
 }
 
+export async function enableVisualTask() {
+  const { data } = await api.post("/visual-task/enable");
+  return data;
+}
+
+export async function disableVisualTask() {
+  const { data } = await api.post("/visual-task/disable");
+  return data;
+}
+
 export async function getAuditHistory(params = {}) {
   const { data } = await api.get("/audit/history", {
     params: {

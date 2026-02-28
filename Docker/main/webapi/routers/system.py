@@ -9,11 +9,14 @@ from ..services.auth_service import ensure_auth_schema
 from ..services.config_service import apply_runtime_timezone, ensure_dirs, resolve_config
 from ..services.db_service import db_dsn, query_rows
 from ..services.eh_cover_embedding_service import (
+    disable_eh_cover_embedding_worker,
+    enable_eh_cover_embedding_worker,
     get_eh_cover_embedding_worker_status,
     start_eh_cover_embedding_worker,
     stop_eh_cover_embedding_worker,
     stop_eh_cover_embedding_worker_until_restart,
 )
+from ..services.rec_service_local import get_local_recommendation_items_cached
 from ..services.schedule_service import sync_scheduler
 from ..services.search_service import _item_from_work
 from ..services.vision_service import warmup_siglip_model, _embed_image_siglip, siglip_warmup_ready
@@ -66,7 +69,11 @@ def _on_startup() -> None:
     except Exception:
         pass
     try:
-        start_eh_cover_embedding_worker()
+        cfg, _ = resolve_config()
+        if bool(cfg.get("SIGLIP_WORKER_ENABLED", True)):
+            enable_eh_cover_embedding_worker()
+        else:
+            disable_eh_cover_embedding_worker()
     except Exception:
         pass
 
@@ -90,6 +97,18 @@ def stop_visual_task() -> dict[str, Any]:
         "ok": True,
         "message": "visual task stopped; restart container to restore automatic visual embedding",
     }
+
+
+@router.post("/api/visual-task/enable")
+def enable_visual_task() -> dict[str, Any]:
+    enable_eh_cover_embedding_worker()
+    return {"ok": True, "message": "visual task worker enabled"}
+
+
+@router.post("/api/visual-task/disable")
+def disable_visual_task() -> dict[str, Any]:
+    disable_eh_cover_embedding_worker()
+    return {"ok": True, "message": "visual task worker disabled"}
 
 
 @router.get("/api/home/history")
@@ -141,50 +160,62 @@ def home_history(
 
 @router.get("/api/home/local")
 def home_local(
+    request: Request,
     cursor: str = Query(default=""),
     limit: int = Query(default=24, ge=1, le=80),
+    sort_by: str = Query(default="xp"),
+    sort_order: str = Query(default="desc"),
 ) -> dict[str, Any]:
-    cursor_ts = None
-    cursor_arcid = ""
+    safe_sort_by = str(sort_by or "xp").strip().lower()
+    if safe_sort_by not in {"xp", "date_added", "eh_posted"}:
+        safe_sort_by = "xp"
+    safe_sort_order = str(sort_order or "desc").strip().lower()
+    if safe_sort_order not in {"asc", "desc"}:
+        safe_sort_order = "desc"
+    offset = 0
     if cursor:
-        parts = str(cursor).split("|", 1)
-        if len(parts) == 2:
-            try:
-                cursor_ts = int(parts[0])
-                cursor_arcid = str(parts[1])
-            except Exception:
-                cursor_ts = None
-                cursor_arcid = ""
+        try:
+            offset = max(0, int(str(cursor)))
+        except Exception:
+            offset = 0
 
-    where = ""
-    params: list[Any] = []
-    if cursor_ts is not None:
-        where = (
-            "WHERE (COALESCE(w.lastreadtime, w.date_added, w.eh_posted, 0) < %s "
-            "OR (COALESCE(w.lastreadtime, w.date_added, w.eh_posted, 0) = %s AND w.arcid < %s))"
-        )
-        params.extend([int(cursor_ts), int(cursor_ts), cursor_arcid])
+    cfg, _ = resolve_config()
+    rows: list[dict[str, Any]] = []
+    if safe_sort_by == "xp":
+        auth_user = getattr(request.state, "auth_user", {}) or {}
+        user_id = str(auth_user.get("uid") or "default_user")
+        ranked = get_local_recommendation_items_cached(cfg, user_id=user_id, sort_order=safe_sort_order)
+        all_items = list(ranked.get("items") or [])
+        end = offset + int(limit)
+        items = all_items[offset:end]
+        next_cursor = str(end) if end < len(all_items) else ""
+        return {
+            "items": items,
+            "next_cursor": next_cursor,
+            "has_more": bool(next_cursor),
+            "meta": {
+                **(ranked.get("meta") or {}),
+                "mode": "local",
+                "sort_by": safe_sort_by,
+                "sort_order": safe_sort_order,
+            },
+        }
 
+    safe_col = "date_added" if safe_sort_by == "date_added" else "eh_posted"
     sql = (
         "SELECT w.arcid, w.title, w.tags, w.eh_posted, w.date_added, w.lastreadtime "
         "FROM works w "
-        f"{where} "
-        "ORDER BY COALESCE(w.lastreadtime, w.date_added, w.eh_posted, 0) DESC, w.arcid DESC LIMIT %s"
+        f"ORDER BY COALESCE(w.{safe_col}, 0) {'ASC' if safe_sort_order == 'asc' else 'DESC'}, w.arcid {'ASC' if safe_sort_order == 'asc' else 'DESC'} "
+        "OFFSET %s LIMIT %s"
     )
-    params.append(int(limit))
-    rows = query_rows(sql, tuple(params))
-    cfg, _ = resolve_config()
+    rows = query_rows(sql, (int(offset), int(limit)))
     items = [_item_from_work(r, cfg) for r in rows]
-    next_cursor = ""
-    if len(rows) >= int(limit):
-        last = rows[-1]
-        last_ts = int(last.get("lastreadtime") or last.get("date_added") or last.get("eh_posted") or 0)
-        next_cursor = f"{last_ts}|{str(last.get('arcid') or '')}"
+    next_cursor = str(offset + int(limit)) if len(rows) >= int(limit) else ""
     return {
         "items": items,
         "next_cursor": next_cursor,
         "has_more": bool(next_cursor),
-        "meta": {"mode": "local"},
+        "meta": {"mode": "local", "sort_by": safe_sort_by, "sort_order": safe_sort_order},
     }
 
 

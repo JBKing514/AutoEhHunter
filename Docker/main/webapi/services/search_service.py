@@ -538,11 +538,18 @@ def _search_by_visual_vector(
         for r in works_rows:
             cover_sim = 0.0
             page_sim = 0.0
+            has_cover = r.get("dist_cover") is not None
+            has_page = r.get("dist_page") is not None
             if r.get("dist_cover") is not None:
                 cover_sim = 1.0 / (1.0 + float(r.get("dist_cover") or 0.0))
             if r.get("dist_page") is not None:
                 page_sim = 1.0 / (1.0 + float(r.get("dist_page") or 0.0))
-            score = (work_cover_w * cover_sim) + (work_page_w * page_sim)
+            if has_cover and not has_page:
+                score = cover_sim
+            elif has_page and not has_cover:
+                score = page_sim
+            else:
+                score = (work_cover_w * cover_sim) + (work_page_w * page_sim)
             items.append(_item_from_work({**r, "score": score}, cfg))
     if scope in ("eh", "both"):
         eh_rows = query_rows(

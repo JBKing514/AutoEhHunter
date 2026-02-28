@@ -107,6 +107,7 @@ let windowResizeListener = null;
 let mainScrollEl = null;
 let visualTaskTimer = null;
 let taskNoticeTimer = null;
+let lastVisualErrorSeq = 0;
 let appInitialized = false;
 
 function t(key, vars = {}) {
@@ -203,6 +204,24 @@ async function pollVisualTaskStatus() {
   try {
     const res = await getVisualTaskStatus();
     const status = res?.status || {};
+    const errSeq = Number(status?.last_error_seq || 0);
+    if (Number.isFinite(errSeq) && errSeq > lastVisualErrorSeq) {
+      lastVisualErrorSeq = errSeq;
+      const reason = String(status?.last_error_message || "unknown").trim();
+      const table = String(status?.last_error_table || "").trim();
+      const item = String(status?.last_error_item || "").trim();
+      const tb = String(status?.last_error_traceback || "").trim();
+      const lines = [
+        table ? `table: ${table}` : "",
+        item ? `item: ${item}` : "",
+        reason ? `reason: ${reason}` : "",
+        tb ? `traceback:\n${tb}` : "",
+      ].filter(Boolean);
+      const text = lines.join("\n\n").slice(0, 6000);
+      layoutStore.pushNotice("visual_task_error", t("notice.visual_task.fail_title"), text);
+      notify(t("notice.visual_task.fail_toast", { reason: reason || "unknown" }), "warning");
+    }
+
     if (status?.stopped_by_user) {
       layoutStore.dismissNoticeType("visual_task");
       const hasStoppedNotice = (layoutStore.notices || []).some((x) => x.type === "visual_task_stopped");
@@ -229,6 +248,9 @@ async function pollVisualTaskStatus() {
       return;
     }
     layoutStore.dismissNoticeType("visual_task");
+    if (status?.running && status?.phase === "idle") {
+      layoutStore.dismissNoticeType("visual_task_stopped");
+    }
   } catch {
     // ignore status polling errors
   }

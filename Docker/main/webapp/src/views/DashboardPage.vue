@@ -40,6 +40,7 @@
 
                 <template v-if="!isMobile">
                   <v-btn v-if="homeTab === 'recommend'" color="secondary" variant="tonal" icon="mdi-shuffle-variant" rounded="lg" @click="shuffleRecommendBatch" />
+                  <v-btn v-if="homeTab === 'local'" color="secondary" variant="tonal" icon="mdi-sort" rounded="lg" @click="openLocalSortDialog" />
                   <v-btn color="primary" variant="tonal" icon="mdi-filter-variant" rounded="lg" @click="homeFiltersOpen = true" />
                 </template>
               </div>
@@ -57,7 +58,18 @@
                   {{ t('home.recommend.shuffle') }}
                 </v-btn>
                 <v-btn
-                  :class="homeTab === 'recommend' ? 'flex-grow-1' : 'w-100'"
+                  v-if="homeTab === 'local'"
+                  class="flex-grow-1"
+                  color="secondary"
+                  variant="tonal"
+                  prepend-icon="mdi-sort"
+                  rounded="lg"
+                  @click="openLocalSortDialog"
+                >
+                  {{ t('home.local.sort.open') }}
+                </v-btn>
+                <v-btn
+                  :class="homeTab === 'recommend' || homeTab === 'local' ? 'flex-grow-1' : 'w-100'"
                   color="primary"
                   variant="tonal"
                   prepend-icon="mdi-filter-variant"
@@ -379,6 +391,29 @@
                 <v-btn color="primary" variant="tonal" @click="runQuickSearch">{{ t('home.search.go') }}</v-btn>
                 <v-btn color="secondary" variant="tonal" @click="quickImageSearch">{{ t('home.image_upload.title') }}</v-btn>
                 <v-btn color="primary" variant="text" @click="openQuickFilters">{{ t('home.filter.title') }}</v-btn>
+              </div>
+            </v-card>
+          </v-dialog>
+
+          <v-dialog v-model="localSortOpen" max-width="520">
+            <v-card class="pa-4" variant="flat">
+              <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('home.local.sort.title') }}</div>
+              <v-radio-group v-model="localSortBy" color="primary" hide-details>
+                <v-radio :label="t('home.local.sort.xp')" value="xp" />
+                <v-radio :label="t('home.local.sort.date_added')" value="date_added" />
+                <v-radio :label="t('home.local.sort.eh_posted')" value="eh_posted" />
+              </v-radio-group>
+              <v-switch
+                v-model="localSortAsc"
+                color="primary"
+                inset
+                hide-details
+                class="mt-2"
+                :label="localSortAsc ? t('home.local.sort.asc') : t('home.local.sort.desc')"
+              />
+              <div class="d-flex justify-end ga-2 mt-4">
+                <v-btn variant="text" @click="localSortOpen = false">{{ t('home.image_upload.cancel') }}</v-btn>
+                <v-btn color="primary" @click="applyLocalSort">{{ t('home.filter.apply') }}</v-btn>
               </div>
             </v-card>
           </v-dialog>
