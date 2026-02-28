@@ -543,6 +543,13 @@ canvas {
   gap: 10px;
 }
 
+.chat-top-wrap {
+  position: fixed;
+  right: 22px;
+  bottom: 88px;
+  z-index: 1200;
+}
+
 .chat-page-container {
   height: calc(100vh - 64px);
   overflow: hidden;

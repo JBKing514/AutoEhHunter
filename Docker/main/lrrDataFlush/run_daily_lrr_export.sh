@@ -27,11 +27,58 @@ _as_bool() {
   [[ "$v" == "1" || "$v" == "true" || "$v" == "yes" || "$v" == "y" || "$v" == "on" ]]
 }
 
-LRR_HOST=${LRR_HOST:-lanraragi}
-LRR_PORT=${LRR_PORT:-3000}
-LRR_SCHEME=${LRR_SCHEME:-http}
+LRR_BASE=${LRR_BASE:-}
+LRR_HOST=${LRR_HOST:-}
+LRR_PORT=${LRR_PORT:-}
+LRR_SCHEME=${LRR_SCHEME:-}
 LRR_BASE_PATH=${LRR_BASE_PATH:-}
 LRR_API_KEY=${LRR_API_KEY:-}
+
+# If LRR_BASE is provided (for example from DATA_UI config), use it as
+# the default source for scheme/host/port/base-path unless explicit split
+# vars are already set.
+if [[ -n "$LRR_BASE" ]]; then
+  if PARSED=$(
+    "$VENV_PY" - "$LRR_BASE" <<'PY'
+import sys
+from urllib.parse import urlparse
+
+raw = (sys.argv[1] if len(sys.argv) > 1 else "").strip()
+u = urlparse(raw)
+scheme = (u.scheme or "").strip()
+host = (u.hostname or "").strip()
+port = u.port
+path = (u.path or "").strip()
+if path == "/":
+    path = ""
+print(scheme)
+print(host)
+print(str(port or ""))
+print(path)
+PY
+  ); then
+    mapfile -t _lrr_parts <<<"$PARSED"
+    _lrr_scheme=${_lrr_parts[0]:-}
+    _lrr_host=${_lrr_parts[1]:-}
+    _lrr_port=${_lrr_parts[2]:-}
+    _lrr_path=${_lrr_parts[3]:-}
+    if [[ -z "$LRR_SCHEME" && -n "$_lrr_scheme" ]]; then LRR_SCHEME=$_lrr_scheme; fi
+    if [[ -z "$LRR_HOST" && -n "$_lrr_host" ]]; then LRR_HOST=$_lrr_host; fi
+    if [[ -z "$LRR_PORT" && -n "$_lrr_port" ]]; then LRR_PORT=$_lrr_port; fi
+    if [[ -z "$LRR_BASE_PATH" && -n "$_lrr_path" ]]; then LRR_BASE_PATH=$_lrr_path; fi
+  fi
+fi
+
+LRR_SCHEME=${LRR_SCHEME:-http}
+LRR_HOST=${LRR_HOST:-lanraragi}
+if [[ -z "$LRR_PORT" ]]; then
+  if [[ "$LRR_SCHEME" == "https" ]]; then
+    LRR_PORT=443
+  else
+    LRR_PORT=3000
+  fi
+fi
+LRR_BASE_PATH=${LRR_BASE_PATH:-}
 
 LRR_METADATA_OUT=${LRR_METADATA_OUT:-/app/runtime/exports/lrr_metadata.jsonl}
 LRR_METADATA_FILTER=${LRR_METADATA_FILTER:-${LRR_EXPORT_FILTER:-}}
@@ -106,6 +153,7 @@ done
 echo "== LRR export run ==" >&2
 echo "time:   $(date -Is)" >&2
 echo "python: $VENV_PY" >&2
+echo "target: ${LRR_SCHEME}://${LRR_HOST}:${LRR_PORT}${LRR_BASE_PATH}" >&2
 
 if _as_bool "$DO_META"; then
   META_ARGS=(

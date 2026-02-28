@@ -1,17 +1,19 @@
 import asyncio
 import json
 import threading
+import time
 from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 import httpx
+import psycopg
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 
 from ..core.config_values import as_bool as _as_bool
-from ..core.schemas import HomeHybridSearchRequest, HomeImageSearchRequest, HomeTextSearchRequest
+from ..core.schemas import HomeHybridSearchRequest, HomeImageSearchRequest, HomeTextSearchRequest, ReaderReadEventRequest
 from ..services.ai_provider import _extract_tags_by_llm
 from ..services.config_service import resolve_config
-from ..services.db_service import query_rows
+from ..services.db_service import db_dsn, query_rows
 from ..services.search_service import (
     _agent_nl_search,
     _cache_read,
@@ -351,6 +353,35 @@ async def reader_page(arcid: str, index: int) -> Response:
         return Response(content=resp.content, media_type=ctype)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"reader page fetch failed: {e}")
+
+
+@router.post("/api/reader/read-event")
+def reader_read_event(req: ReaderReadEventRequest) -> dict[str, Any]:
+    safe_arcid = str(req.arcid or "").strip()
+    if not safe_arcid:
+        raise HTTPException(status_code=400, detail="arcid required")
+    read_time = int(req.read_time or int(time.time()))
+    source_file = str(req.source_file or "reader-ui").strip() or "reader-ui"
+    ingested_at = str(req.ingested_at or "").strip() or None
+    raw = req.raw if isinstance(req.raw, dict) else {}
+    dsn = str(db_dsn() or "").strip()
+    if not dsn:
+        raise HTTPException(status_code=400, detail="POSTGRES_DSN is not configured")
+
+    sql = (
+        "INSERT INTO read_events (arcid, read_time, source_file, ingested_at, raw) "
+        "VALUES (%s, %s, %s, COALESCE(%s::timestamptz, now()), %s::jsonb) "
+        "ON CONFLICT (arcid, read_time) DO NOTHING"
+    )
+    try:
+        with psycopg.connect(dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (safe_arcid, read_time, source_file, ingested_at, json.dumps(raw, ensure_ascii=False)))
+                inserted = int(cur.rowcount or 0)
+            conn.commit()
+        return {"ok": True, "inserted": inserted}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"insert read_event failed: {e}")
 
 
 @router.post("/api/home/search/image")

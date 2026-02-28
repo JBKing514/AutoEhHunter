@@ -15,9 +15,8 @@
       </template>
     </v-alert>
     <v-row>
-      <v-col cols="12" md="4"><v-text-field v-model="config.LRR_READS_HOURS" :label="t('settings.lrr.reads_hours')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
-      <v-col cols="12" md="4"><v-text-field v-model="config.REC_PROFILE_DAYS" :label="t('settings.rec.profile_days')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
       <v-col cols="12" md="4"><v-text-field v-model="config.REC_CANDIDATE_HOURS" :label="t('settings.rec.candidate_hours')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
+      <v-col cols="12" md="4"><v-text-field v-model="config.REC_PROFILE_DAYS" :label="t('settings.rec.profile_days')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
       <v-col cols="12" md="4"><v-text-field v-model="config.REC_CANDIDATE_LIMIT" :label="t('settings.rec.candidate_limit')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
       <v-col cols="12" md="4"><v-text-field v-model="config.REC_CLUSTER_K" :label="t('settings.rec.cluster_k')" type="number" variant="outlined" density="compact" color="primary" /></v-col>
       <v-col cols="12" md="4"><v-text-field v-model="config.REC_CLUSTER_CACHE_TTL_S" :label="t('settings.rec.cache_ttl')" type="number" variant="outlined" density="compact" color="primary" /></v-col>

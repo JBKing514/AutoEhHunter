@@ -40,6 +40,7 @@
 
                 <template v-if="!isMobile">
                   <v-btn v-if="homeTab === 'recommend'" color="secondary" variant="tonal" icon="mdi-shuffle-variant" rounded="lg" @click="shuffleRecommendBatch" />
+                  <v-btn v-if="homeTab === 'local'" color="secondary" variant="tonal" icon="mdi-sort" rounded="lg" @click="openLocalSortDialog" />
                   <v-btn color="primary" variant="tonal" icon="mdi-filter-variant" rounded="lg" @click="homeFiltersOpen = true" />
                 </template>
               </div>
@@ -57,7 +58,18 @@
                   {{ t('home.recommend.shuffle') }}
                 </v-btn>
                 <v-btn
-                  :class="homeTab === 'recommend' ? 'flex-grow-1' : 'w-100'"
+                  v-if="homeTab === 'local'"
+                  class="flex-grow-1"
+                  color="secondary"
+                  variant="tonal"
+                  prepend-icon="mdi-sort"
+                  rounded="lg"
+                  @click="openLocalSortDialog"
+                >
+                  {{ t('home.local.sort.open') }}
+                </v-btn>
+                <v-btn
+                  :class="homeTab === 'recommend' || homeTab === 'local' ? 'flex-grow-1' : 'w-100'"
                   color="primary"
                   variant="tonal"
                   prepend-icon="mdi-filter-variant"
@@ -382,6 +394,29 @@
               </div>
             </v-card>
           </v-dialog>
+
+          <v-dialog v-model="localSortOpen" max-width="520">
+            <v-card class="pa-4" variant="flat">
+              <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('home.local.sort.title') }}</div>
+              <v-radio-group v-model="localSortBy" color="primary" hide-details>
+                <v-radio :label="t('home.local.sort.xp')" value="xp" />
+                <v-radio :label="t('home.local.sort.date_added')" value="date_added" />
+                <v-radio :label="t('home.local.sort.eh_posted')" value="eh_posted" />
+              </v-radio-group>
+              <v-switch
+                v-model="localSortAsc"
+                color="primary"
+                inset
+                hide-details
+                class="mt-2"
+                :label="localSortAsc ? t('home.local.sort.asc') : t('home.local.sort.desc')"
+              />
+              <div class="d-flex justify-end ga-2 mt-4">
+                <v-btn variant="text" @click="localSortOpen = false">{{ t('home.image_upload.cancel') }}</v-btn>
+                <v-btn color="primary" @click="applyLocalSort">{{ t('home.filter.apply') }}</v-btn>
+              </div>
+            </v-card>
+          </v-dialog>
 </template>
 
 <script>
@@ -392,6 +427,7 @@ export default {
     return useDashboardStore();
   },
   mounted() {
+    this.applyReaderOriginRestore();
     this.$nextTick(() => {
       if (typeof this.bindHomeInfiniteScroll === "function") {
         this.bindHomeInfiniteScroll();
@@ -427,14 +463,59 @@ export default {
     },
   },
   methods: {
+    applyReaderOriginRestore() {
+      if (typeof window === "undefined") return;
+      let payload = null;
+      try {
+        const raw = window.sessionStorage.getItem("aeh_reader_origin");
+        if (raw) payload = JSON.parse(raw);
+      } catch {
+        payload = null;
+      }
+      if (!payload || typeof payload !== "object") return;
+      try {
+        window.sessionStorage.removeItem("aeh_reader_origin");
+      } catch {
+        // ignore
+      }
+      const tab = String(payload.tab || "").trim();
+      if (["recommend", "local", "history", "search"].includes(tab)) {
+        this.homeTab = tab;
+      }
+      const vm = String(payload.viewMode || "").trim();
+      if (["wide", "compact", "list"].includes(vm)) {
+        this.homeViewMode = vm;
+      }
+      const y = Number(payload.scrollY || 0);
+      this.$nextTick(() => {
+        if (Number.isFinite(y) && y > 0) {
+          window.requestAnimationFrame(() => {
+            window.scrollTo({ top: y, left: 0, behavior: "auto" });
+          });
+        }
+      });
+    },
     startReader(item) {
       const arcid = String(item?.arcid || "").trim();
       if (!arcid) return;
       this.mobilePreviewItem = null;
+      if (typeof window !== "undefined") {
+        const payload = {
+          tab: String(this.homeTab || "recommend"),
+          viewMode: String(this.homeViewMode || "wide"),
+          scrollY: Number(window.scrollY || 0),
+          at: Date.now(),
+        };
+        try {
+          window.sessionStorage.setItem("aeh_reader_origin", JSON.stringify(payload));
+        } catch {
+          // ignore
+        }
+      }
       this.$router.push({
         name: "reader",
         params: { arcid },
-        query: { page: "1" },
+        query: { page: "1", origin: "dashboard" },
       }).catch(() => null);
     },
     onImageError(item) {

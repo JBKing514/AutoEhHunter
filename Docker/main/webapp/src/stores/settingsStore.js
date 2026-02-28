@@ -1,11 +1,15 @@
 import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import {
+  clearReadEvents,
   clearRecommendProfile,
   clearRecommendTouches,
+  disableVisualTask,
+  enableVisualTask,
   clearRuntimeDeps,
   clearSiglip,
   clearThumbCache,
+  clearWorksDuplicates,
   downloadAppConfigBackup,
   downloadSiglip,
   getConfig,
@@ -215,21 +219,26 @@ export const useSettingsStore = defineStore("settings", () => {
       SEARCH_RESULT_SIZE: "settings.search.result_size",
       SEARCH_RESULT_INFINITE: "settings.search.result_infinite",
       SEARCH_WEIGHT_VISUAL: "settings.search.weight_visual",
+      SEARCH_WEIGHT_PAGE_VISUAL: "settings.search.weight_page_visual",
       SEARCH_WEIGHT_EH_VISUAL: "settings.search.weight_eh_visual",
       SEARCH_WEIGHT_DESC: "settings.search.weight_desc",
       SEARCH_WEIGHT_TEXT: "settings.search.weight_text",
       SEARCH_WEIGHT_EH_TEXT: "settings.search.weight_eh_text",
       SEARCH_WEIGHT_PLOT_VISUAL: "settings.search.weight_plot_visual",
+      SEARCH_WEIGHT_PLOT_PAGE_VISUAL: "settings.search.weight_plot_page_visual",
       SEARCH_WEIGHT_PLOT_EH_VISUAL: "settings.search.weight_plot_eh_visual",
       SEARCH_WEIGHT_PLOT_DESC: "settings.search.weight_plot_desc",
       SEARCH_WEIGHT_PLOT_TEXT: "settings.search.weight_plot_text",
       SEARCH_WEIGHT_PLOT_EH_TEXT: "settings.search.weight_plot_eh_text",
       SEARCH_WEIGHT_MIXED_VISUAL: "settings.search.weight_mixed_visual",
+      SEARCH_WEIGHT_MIXED_PAGE_VISUAL: "settings.search.weight_mixed_page_visual",
       SEARCH_WEIGHT_MIXED_EH_VISUAL: "settings.search.weight_mixed_eh_visual",
       SEARCH_WEIGHT_MIXED_DESC: "settings.search.weight_mixed_desc",
       SEARCH_WEIGHT_MIXED_TEXT: "settings.search.weight_mixed_text",
       SEARCH_WEIGHT_MIXED_EH_TEXT: "settings.search.weight_mixed_eh_text",
       SEARCH_TAG_FUZZY_THRESHOLD: "settings.search.fuzzy_threshold",
+      SEARCH_WORK_COVER_WEIGHT: "settings.search.work_cover_weight",
+      SEARCH_WORK_PAGE_WEIGHT: "settings.search.work_page_weight",
       TEXT_INGEST_PRUNE_NOT_SEEN: "settings.text_ingest.prune",
       WORKER_ONLY_MISSING: "settings.worker.only_missing",
       TAG_TRANSLATION_REPO: "settings.translation.repo",
@@ -265,6 +274,7 @@ export const useSettingsStore = defineStore("settings", () => {
       INGEST_VL_MODEL_CUSTOM: "settings.provider.ingest_vl_model_custom",
       INGEST_EMB_MODEL_CUSTOM: "settings.provider.ingest_emb_model_custom",
       SIGLIP_MODEL: "settings.provider.siglip_model",
+      SIGLIP_WORKER_ENABLED: "settings.provider.siglip_worker_enabled",
       WORKER_BATCH: "settings.provider.worker_batch",
       WORKER_SLEEP: "settings.provider.worker_sleep",
       MEMORY_SHORT_TERM_ENABLED: "settings.memory.short_term_enabled",
@@ -307,7 +317,7 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
-  function normalizeAgentChannelWeights(changedKey, keys = ["SEARCH_WEIGHT_VISUAL", "SEARCH_WEIGHT_EH_VISUAL", "SEARCH_WEIGHT_DESC", "SEARCH_WEIGHT_TEXT", "SEARCH_WEIGHT_EH_TEXT"]) {
+  function normalizeAgentChannelWeights(changedKey, keys = ["SEARCH_WEIGHT_VISUAL", "SEARCH_WEIGHT_PAGE_VISUAL", "SEARCH_WEIGHT_EH_VISUAL", "SEARCH_WEIGHT_DESC", "SEARCH_WEIGHT_TEXT", "SEARCH_WEIGHT_EH_TEXT"]) {
     if (syncing) return;
     syncing = true;
     try {
@@ -371,20 +381,25 @@ export const useSettingsStore = defineStore("settings", () => {
 
   function resetSearchWeightPresets() {
     config.value.SEARCH_WEIGHT_VISUAL = 2.0;
+    config.value.SEARCH_WEIGHT_PAGE_VISUAL = 1.2;
     config.value.SEARCH_WEIGHT_EH_VISUAL = 1.6;
     config.value.SEARCH_WEIGHT_DESC = 0.8;
     config.value.SEARCH_WEIGHT_TEXT = 0.7;
     config.value.SEARCH_WEIGHT_EH_TEXT = 0.7;
     config.value.SEARCH_WEIGHT_PLOT_VISUAL = 0.6;
+    config.value.SEARCH_WEIGHT_PLOT_PAGE_VISUAL = 0.4;
     config.value.SEARCH_WEIGHT_PLOT_EH_VISUAL = 0.5;
     config.value.SEARCH_WEIGHT_PLOT_DESC = 2.0;
     config.value.SEARCH_WEIGHT_PLOT_TEXT = 0.9;
     config.value.SEARCH_WEIGHT_PLOT_EH_TEXT = 0.9;
     config.value.SEARCH_WEIGHT_MIXED_VISUAL = 1.2;
+    config.value.SEARCH_WEIGHT_MIXED_PAGE_VISUAL = 0.9;
     config.value.SEARCH_WEIGHT_MIXED_EH_VISUAL = 1.0;
     config.value.SEARCH_WEIGHT_MIXED_DESC = 1.4;
     config.value.SEARCH_WEIGHT_MIXED_TEXT = 0.9;
     config.value.SEARCH_WEIGHT_MIXED_EH_TEXT = 0.9;
+    config.value.SEARCH_WORK_COVER_WEIGHT = 0.6;
+    config.value.SEARCH_WORK_PAGE_WEIGHT = 0.4;
   }
 
   function resetRecommendPreset() {
@@ -462,6 +477,7 @@ export const useSettingsStore = defineStore("settings", () => {
       config.value.READER_WHEEL_CURVE = Math.max(0, Math.min(100, mapped));
     }
     if (config.value.REC_SHOW_PAGE_COUNT === undefined) config.value.REC_SHOW_PAGE_COUNT = true;
+    if (config.value.SIGLIP_WORKER_ENABLED === undefined) config.value.SIGLIP_WORKER_ENABLED = true;
     if (config.value.READER_PRELOAD_COUNT === undefined || config.value.READER_PRELOAD_COUNT === null || config.value.READER_PRELOAD_COUNT === "") {
       config.value.READER_PRELOAD_COUNT = 2;
     }
@@ -678,6 +694,42 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  async function clearWorksDuplicatesAction() {
+    try {
+      const res = await clearWorksDuplicates();
+      notify(t("settings.data_clean.dedup_works_done", { n: Number(res.deleted || 0) }), "success");
+    } catch (e) {
+      notify(String(e?.response?.data?.detail || e), "warning");
+    }
+  }
+
+  async function clearReadEventsAction() {
+    try {
+      const res = await clearReadEvents();
+      notify(t("settings.data_clean.clear_read_events_done", { n: Number(res.deleted || 0) }), "success");
+    } catch (e) {
+      notify(String(e?.response?.data?.detail || e), "warning");
+    }
+  }
+
+  async function toggleSiglipWorkerEnabled(enabled) {
+    const next = !!enabled;
+    const prev = !!config.value.SIGLIP_WORKER_ENABLED;
+    config.value.SIGLIP_WORKER_ENABLED = next;
+    try {
+      if (next) {
+        await enableVisualTask();
+      } else {
+        await disableVisualTask();
+      }
+      await saveConfig();
+      notify(t(next ? "settings.siglip_worker.enabled_toast" : "settings.siglip_worker.disabled_toast"), next ? "success" : "warning");
+    } catch (e) {
+      config.value.SIGLIP_WORKER_ENABLED = prev;
+      notify(String(e?.response?.data?.detail || e), "warning");
+    }
+  }
+
   async function loadSkillsData() {
     try {
       const res = await getSkills();
@@ -770,21 +822,26 @@ export const useSettingsStore = defineStore("settings", () => {
   watch(() => config.value.SEARCH_VISUAL_WEIGHT, () => normalizeSearchWeights("SEARCH_TEXT_WEIGHT", "SEARCH_VISUAL_WEIGHT", "SEARCH_VISUAL_WEIGHT"));
   watch(() => config.value.SEARCH_MIXED_TEXT_WEIGHT, () => normalizeSearchWeights("SEARCH_MIXED_TEXT_WEIGHT", "SEARCH_MIXED_VISUAL_WEIGHT", "SEARCH_MIXED_TEXT_WEIGHT"));
   watch(() => config.value.SEARCH_MIXED_VISUAL_WEIGHT, () => normalizeSearchWeights("SEARCH_MIXED_TEXT_WEIGHT", "SEARCH_MIXED_VISUAL_WEIGHT", "SEARCH_MIXED_VISUAL_WEIGHT"));
+  watch(() => config.value.SEARCH_WORK_COVER_WEIGHT, () => normalizeSearchWeights("SEARCH_WORK_COVER_WEIGHT", "SEARCH_WORK_PAGE_WEIGHT", "SEARCH_WORK_COVER_WEIGHT"));
+  watch(() => config.value.SEARCH_WORK_PAGE_WEIGHT, () => normalizeSearchWeights("SEARCH_WORK_COVER_WEIGHT", "SEARCH_WORK_PAGE_WEIGHT", "SEARCH_WORK_PAGE_WEIGHT"));
   watch(() => config.value.SEARCH_WEIGHT_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_VISUAL"));
+  watch(() => config.value.SEARCH_WEIGHT_PAGE_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PAGE_VISUAL"));
   watch(() => config.value.SEARCH_WEIGHT_EH_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_EH_VISUAL"));
   watch(() => config.value.SEARCH_WEIGHT_DESC, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_DESC"));
   watch(() => config.value.SEARCH_WEIGHT_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_TEXT"));
   watch(() => config.value.SEARCH_WEIGHT_EH_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_EH_TEXT"));
-  watch(() => config.value.SEARCH_WEIGHT_PLOT_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_VISUAL", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
-  watch(() => config.value.SEARCH_WEIGHT_PLOT_EH_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_EH_VISUAL", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
-  watch(() => config.value.SEARCH_WEIGHT_PLOT_DESC, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_DESC", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
-  watch(() => config.value.SEARCH_WEIGHT_PLOT_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_TEXT", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
-  watch(() => config.value.SEARCH_WEIGHT_PLOT_EH_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_EH_TEXT", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
-  watch(() => config.value.SEARCH_WEIGHT_MIXED_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_VISUAL", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
-  watch(() => config.value.SEARCH_WEIGHT_MIXED_EH_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_EH_VISUAL", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
-  watch(() => config.value.SEARCH_WEIGHT_MIXED_DESC, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_DESC", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
-  watch(() => config.value.SEARCH_WEIGHT_MIXED_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_TEXT", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
-  watch(() => config.value.SEARCH_WEIGHT_MIXED_EH_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_EH_TEXT", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_PLOT_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_VISUAL", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_PAGE_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_PLOT_PAGE_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_PAGE_VISUAL", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_PAGE_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_PLOT_EH_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_EH_VISUAL", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_PAGE_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_PLOT_DESC, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_DESC", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_PAGE_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_PLOT_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_TEXT", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_PAGE_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_PLOT_EH_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_PLOT_EH_TEXT", ["SEARCH_WEIGHT_PLOT_VISUAL", "SEARCH_WEIGHT_PLOT_PAGE_VISUAL", "SEARCH_WEIGHT_PLOT_EH_VISUAL", "SEARCH_WEIGHT_PLOT_DESC", "SEARCH_WEIGHT_PLOT_TEXT", "SEARCH_WEIGHT_PLOT_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_MIXED_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_VISUAL", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_PAGE_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_MIXED_PAGE_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_PAGE_VISUAL", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_PAGE_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_MIXED_EH_VISUAL, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_EH_VISUAL", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_PAGE_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_MIXED_DESC, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_DESC", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_PAGE_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_MIXED_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_TEXT", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_PAGE_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
+  watch(() => config.value.SEARCH_WEIGHT_MIXED_EH_TEXT, () => normalizeAgentChannelWeights("SEARCH_WEIGHT_MIXED_EH_TEXT", ["SEARCH_WEIGHT_MIXED_VISUAL", "SEARCH_WEIGHT_MIXED_PAGE_VISUAL", "SEARCH_WEIGHT_MIXED_EH_VISUAL", "SEARCH_WEIGHT_MIXED_DESC", "SEARCH_WEIGHT_MIXED_TEXT", "SEARCH_WEIGHT_MIXED_EH_TEXT"]));
   watch(() => config.value.REC_TAG_WEIGHT, () => normalizeRecommendWeights("REC_TAG_WEIGHT"));
   watch(() => config.value.REC_VISUAL_WEIGHT, () => normalizeRecommendWeights("REC_VISUAL_WEIGHT"));
   watch(() => config.value.REC_FEEDBACK_WEIGHT, () => normalizeRecommendWeights("REC_FEEDBACK_WEIGHT"));
@@ -892,6 +949,9 @@ export const useSettingsStore = defineStore("settings", () => {
     clearSiglipAction,
     clearRecommendTouchesAction,
     clearRecommendProfileAction,
+    clearWorksDuplicatesAction,
+    clearReadEventsAction,
+    toggleSiglipWorkerEnabled,
     loadSkillsData,
     onPluginUploadChange,
     loadDevSchemaData,

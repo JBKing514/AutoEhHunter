@@ -175,16 +175,14 @@ def run_task(task_name: str, cmd: list[str], timeout_s: int = 1800) -> dict[str,
             if "timeout" in s or "connection" in s or "dns" in s:
                 return "Hint: EH network issue; verify EH_BASE_URL, connectivity, and cookie/user-agent settings."
             return "Hint: check EH crawler log for URL fetch/parsing errors."
-        if task == "lrr_export":
-            if "database" in s or "postgres" in s:
-                return "Hint: LRR export DB access failed; verify LRR DB connection and credentials."
-            return "Hint: check LRR export script output for source DB/file access issues."
-        if task == "text_ingest":
-            if "metadata" in s or "not found" in s:
-                return "Hint: metadata file may be missing; run LRR export first and verify export path."
-            if "relation" in s or "column" in s or "pg" in s:
+        if task in {"lrr_sync", "lrr_sync_manual"}:
+            if "401" in s or "403" in s or "unauthorized" in s:
+                return "Hint: LRR API auth failed; verify LRR_API_KEY and LRR_BASE."
+            if "timeout" in s or "connection" in s or "dns" in s or "network" in s:
+                return "Hint: LRR network issue; verify LRR_BASE reachability and service status."
+            if "relation" in s or "column" in s or "postgres" in s or "psycopg" in s:
                 return "Hint: target pgvector schema mismatch; run latest schema.sql migrations."
-            return "Hint: check text ingest logs for pgvector schema/input parsing errors."
+            return "Hint: check LRR sync logs for API payload or DB upsert errors."
         if task == "eh_ingest":
             if "translation" in s:
                 return "Hint: translation payload error; verify TAG_TRANSLATION_REPO or network to translation source."
@@ -201,7 +199,7 @@ def run_task(task_name: str, cmd: list[str], timeout_s: int = 1800) -> dict[str,
 
     def _sanitize_task_log_text(task: str, text: str) -> str:
         raw = str(text or "")
-        if task not in {"eh_ingest", "lrr_ingest", "eh_lrr_ingest", "text_ingest"}:
+        if task not in {"eh_ingest", "lrr_ingest", "eh_lrr_ingest", "lrr_sync", "lrr_sync_manual"}:
             return raw
         out_lines: list[str] = []
         for line in raw.replace("\r", "\n").splitlines():

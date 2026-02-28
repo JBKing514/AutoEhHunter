@@ -130,10 +130,12 @@ export const useLayoutStore = defineStore("layout", () => {
     applyPageZoom();
   }
 
-  function pushNotice(type, title, text) {
+  function pushNotice(type, title, text, options = {}) {
     const id = `${type}-${Date.now()}`;
+    const actionLabel = String(options?.actionLabel || "").trim();
+    const onAction = typeof options?.onAction === "function" ? options.onAction : null;
     notices.value = (notices.value || []).filter((x) => x.type !== type);
-    notices.value.unshift({ id, type, title, text, ts: Date.now() });
+    notices.value.unshift({ id, type, title, text, actionLabel, onAction, ts: Date.now() });
     notices.value = notices.value.slice(0, 100);
   }
 
@@ -143,6 +145,16 @@ export const useLayoutStore = defineStore("layout", () => {
 
   function clearAllNotices() {
     notices.value = [];
+  }
+
+  function dismissNoticeType(type) {
+    notices.value = (notices.value || []).filter((x) => x.type !== type);
+  }
+
+  async function runNoticeAction(id) {
+    const it = (notices.value || []).find((x) => x.id === id);
+    if (!it || typeof it.onAction !== "function") return;
+    await it.onAction();
   }
 
   async function logoutNow() {
@@ -173,6 +185,8 @@ export const useLayoutStore = defineStore("layout", () => {
     pushNotice,
     dismissNotice,
     clearAllNotices,
+    dismissNoticeType,
+    runNoticeAction,
     logoutNow,
   };
 });

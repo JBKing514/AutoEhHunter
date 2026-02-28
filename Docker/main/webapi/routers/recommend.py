@@ -25,6 +25,7 @@ def home_recommend(
     depth: int = Query(default=1, ge=1, le=8),
     jitter: bool = Query(default=False),
     jitter_nonce: str = Query(default=""),
+    visual_scope: str = Query(default="external"),
 ) -> dict[str, Any]:
     auth_user = getattr(request.state, "auth_user", {}) or {}
     user_id = str(auth_user.get("uid") or "default_user")
@@ -36,6 +37,7 @@ def home_recommend(
         depth=depth,
         jitter=bool(jitter),
         jitter_nonce=str(jitter_nonce or ""),
+        visual_scope=str(visual_scope or "external"),
     )
     all_items = list(data.get("items") or [])
     start = 0
@@ -68,6 +70,7 @@ def recommend_items(
     depth: int = Query(default=1, ge=1, le=8),
     jitter: bool = Query(default=False),
     jitter_nonce: str = Query(default=""),
+    visual_scope: str = Query(default="external"),
 ) -> dict[str, Any]:
     return home_recommend(
         request=request,
@@ -77,6 +80,7 @@ def recommend_items(
         depth=depth,
         jitter=jitter,
         jitter_nonce=jitter_nonce,
+        visual_scope=visual_scope,
     )
 
 

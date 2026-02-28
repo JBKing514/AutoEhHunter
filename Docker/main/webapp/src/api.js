@@ -175,8 +175,23 @@ export async function runTask(task, args = "") {
   return data;
 }
 
+export async function stopTask(taskId) {
+  const { data } = await api.post("/task/stop", { task_id: String(taskId || "") });
+  return data;
+}
+
 export async function clearEhCheckpoint() {
   const { data } = await api.delete("/eh/checkpoint");
+  return data;
+}
+
+export async function clearWorksDuplicates() {
+  const { data } = await api.post("/db/works/deduplicate");
+  return data;
+}
+
+export async function clearReadEvents() {
+  const { data } = await api.delete("/db/read-events");
   return data;
 }
 
@@ -202,6 +217,26 @@ export async function injectDevSchema() {
 
 export async function getTasks() {
   const { data } = await api.get("/tasks");
+  return data;
+}
+
+export async function getVisualTaskStatus() {
+  const { data } = await api.get("/visual-task/status");
+  return data;
+}
+
+export async function stopVisualTask() {
+  const { data } = await api.post("/visual-task/stop");
+  return data;
+}
+
+export async function enableVisualTask() {
+  const { data } = await api.post("/visual-task/enable");
+  return data;
+}
+
+export async function disableVisualTask() {
+  const { data } = await api.post("/visual-task/disable");
   return data;
 }
 
@@ -345,6 +380,11 @@ export async function getHomeTagSuggest(params = {}) {
 
 export async function getReaderManifest(arcid) {
   const { data } = await api.get(`/reader/${encodeURIComponent(String(arcid || ""))}/manifest`);
+  return data;
+}
+
+export async function postReaderReadEvent(payload = {}) {
+  const { data } = await api.post("/reader/read-event", payload || {});
   return data;
 }
 

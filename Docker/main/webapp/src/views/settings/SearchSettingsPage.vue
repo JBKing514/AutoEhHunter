@@ -43,6 +43,9 @@
         <v-slider v-model="config.SEARCH_WEIGHT_VISUAL" min="0" max="5" step="0.01" :label="t('settings.search.weight_visual')" color="primary" density="compact" hide-details thumb-label />
       </v-col>
       <v-col cols="12" md="6">
+        <v-slider v-model="config.SEARCH_WEIGHT_PAGE_VISUAL" min="0" max="5" step="0.01" :label="t('settings.search.weight_page_visual')" color="primary" density="compact" hide-details thumb-label />
+      </v-col>
+      <v-col cols="12" md="6">
         <v-slider v-model="config.SEARCH_WEIGHT_EH_VISUAL" min="0" max="5" step="0.01" :label="t('settings.search.weight_eh_visual')" color="primary" density="compact" hide-details thumb-label />
       </v-col>
       <v-col cols="12" md="6">
@@ -62,6 +65,9 @@
         <v-slider v-model="config.SEARCH_WEIGHT_PLOT_VISUAL" min="0" max="5" step="0.01" :label="t('settings.search.weight_plot_visual')" color="primary" density="compact" hide-details thumb-label />
       </v-col>
       <v-col cols="12" md="6">
+        <v-slider v-model="config.SEARCH_WEIGHT_PLOT_PAGE_VISUAL" min="0" max="5" step="0.01" :label="t('settings.search.weight_plot_page_visual')" color="primary" density="compact" hide-details thumb-label />
+      </v-col>
+      <v-col cols="12" md="6">
         <v-slider v-model="config.SEARCH_WEIGHT_PLOT_EH_VISUAL" min="0" max="5" step="0.01" :label="t('settings.search.weight_plot_eh_visual')" color="primary" density="compact" hide-details thumb-label />
       </v-col>
       <v-col cols="12" md="6">
@@ -79,6 +85,9 @@
       </v-col>
       <v-col cols="12" md="6">
         <v-slider v-model="config.SEARCH_WEIGHT_MIXED_VISUAL" min="0" max="5" step="0.01" :label="t('settings.search.weight_mixed_visual')" color="primary" density="compact" hide-details thumb-label />
+      </v-col>
+      <v-col cols="12" md="6">
+        <v-slider v-model="config.SEARCH_WEIGHT_MIXED_PAGE_VISUAL" min="0" max="5" step="0.01" :label="t('settings.search.weight_mixed_page_visual')" color="primary" density="compact" hide-details thumb-label />
       </v-col>
       <v-col cols="12" md="6">
         <v-slider v-model="config.SEARCH_WEIGHT_MIXED_EH_VISUAL" min="0" max="5" step="0.01" :label="t('settings.search.weight_mixed_eh_visual')" color="primary" density="compact" hide-details thumb-label />
@@ -103,6 +112,12 @@
       </v-col>
       <v-col cols="12" md="6">
         <v-slider v-model="config.SEARCH_VISUAL_WEIGHT" min="0" max="1" step="0.01" :label="t('settings.search.visual_weight')" color="primary" density="compact" hide-details thumb-label />
+      </v-col>
+      <v-col cols="12" md="6">
+        <v-slider v-model="config.SEARCH_WORK_COVER_WEIGHT" min="0" max="1" step="0.01" :label="t('settings.search.work_cover_weight')" color="primary" density="compact" hide-details thumb-label />
+      </v-col>
+      <v-col cols="12" md="6">
+        <v-slider v-model="config.SEARCH_WORK_PAGE_WEIGHT" min="0" max="1" step="0.01" :label="t('settings.search.work_page_weight')" color="primary" density="compact" hide-details thumb-label />
       </v-col>
       <v-col cols="12" md="6">
         <v-slider v-model="config.SEARCH_MIXED_TEXT_WEIGHT" min="0" max="1" step="0.01" :label="t('settings.search.mixed_text_weight')" color="primary" density="compact" hide-details thumb-label />

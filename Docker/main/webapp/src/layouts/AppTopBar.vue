@@ -35,8 +35,24 @@
         </v-badge>
       </template>
       <v-list density="compact" min-width="360" class="notice-list">
-        <v-list-item v-for="n in notices" :key="n.id" :title="n.title" :subtitle="n.text">
+        <v-list-item v-for="n in notices" :key="n.id" class="notice-item">
+          <template #title>
+            <div class="notice-title">{{ n.title }}</div>
+          </template>
+          <template #subtitle>
+            <div class="notice-text">{{ n.text }}</div>
+          </template>
           <template #append>
+            <v-btn
+              v-if="n.actionLabel"
+              size="x-small"
+              variant="tonal"
+              color="warning"
+              class="mr-1"
+              @click="emit('notice-action', n.id)"
+            >
+              {{ n.actionLabel }}
+            </v-btn>
             <v-btn size="x-small" variant="text" icon="mdi-close" @click="emit('dismiss-notice', n.id)" />
           </template>
         </v-list-item>
@@ -85,6 +101,7 @@ const emit = defineEmits([
   "update:lang",
   "update:zoom",
   "dismiss-notice",
+  "notice-action",
   "clear-all-notices",
   "go-settings",
   "logout",
@@ -116,6 +133,25 @@ const handleCycleTheme = async () => {
 <style scoped>
 .app-header {
   background-color: #000000;
+}
+
+.notice-title {
+  white-space: pre-wrap;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.notice-text {
+  white-space: pre-wrap;
+  line-height: 1.3;
+  word-break: break-word;
+  max-width: 520px;
+}
+
+.notice-item :deep(.v-list-item-subtitle) {
+  -webkit-line-clamp: unset;
+  white-space: pre-wrap;
+  overflow: visible;
 }
 
 @media (max-width: 959px) {

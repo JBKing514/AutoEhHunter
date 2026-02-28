@@ -16,6 +16,10 @@ class TaskRunRequest(BaseModel):
     args: str = ""
 
 
+class TaskStopRequest(BaseModel):
+    task_id: str
+
+
 class ProviderModelsRequest(BaseModel):
     base_url: str = ""
     api_key: str = ""
@@ -54,6 +58,14 @@ class HomeHybridSearchRequest(BaseModel):
     ui_lang: str = "zh"
     include_categories: list[str] = []
     include_tags: list[str] = []
+
+
+class ReaderReadEventRequest(BaseModel):
+    arcid: str = ""
+    read_time: int | None = None
+    source_file: str = "reader-ui"
+    ingested_at: str = ""
+    raw: dict[str, Any] | None = None
 
 
 class RecommendTouchRequest(BaseModel):

@@ -51,6 +51,7 @@ import { useAppStore } from "./stores/appStore";
 import { useToastStore } from "./stores/useToastStore";
 import { useThemeManager } from "./composables/useThemeManager";
 import { formatDateMinute, formatDateTime } from "./utils/helpers";
+import { getTasks, getVisualTaskStatus, stopTask, stopVisualTask } from "./api";
 import brandLogo from "./ico/AutoEhHunterLogo_128.png";
 
 const router = useRouter();
@@ -104,6 +105,9 @@ let authRequiredListener = null;
 let windowScrollListener = null;
 let windowResizeListener = null;
 let mainScrollEl = null;
+let visualTaskTimer = null;
+let taskNoticeTimer = null;
+let lastVisualErrorSeq = 0;
 let appInitialized = false;
 
 function t(key, vars = {}) {
@@ -112,6 +116,152 @@ function t(key, vars = {}) {
 
 function notify(text, color = "success") {
   toastStore.open(text, color);
+}
+
+function visualTaskText(status = {}) {
+  const table = String(status?.table || "");
+  const current = Math.max(0, Number(status?.current || 0));
+  const total = Math.max(current, Number(status?.total || 0));
+  if (table === "works") return t("notice.visual_task.works_running", { current, total });
+  if (table === "eh_works") return t("notice.visual_task.eh_running", { current, total });
+  return t("notice.visual_task.idle");
+}
+
+function stopVisualTaskMonitor() {
+  if (visualTaskTimer) {
+    clearInterval(visualTaskTimer);
+    visualTaskTimer = null;
+  }
+}
+
+function stopTaskNoticeMonitor() {
+  if (taskNoticeTimer) {
+    clearInterval(taskNoticeTimer);
+    taskNoticeTimer = null;
+  }
+}
+
+function taskNoticeTitle(task) {
+  return t("notice.task.title", { task: String(task || "") || "-" });
+}
+
+function taskNoticeText(task = {}) {
+  const taskName = String(task?.task || "").trim() || "-";
+  const shortId = String(task?.task_id || "").slice(0, 8) || "-";
+  return t("notice.task.running", { task: taskName, id: shortId });
+}
+
+function clearStaleTaskNotices(runningTaskIds = new Set()) {
+  for (const n of layoutStore.notices || []) {
+    const type = String(n?.type || "");
+    if (!type.startsWith("task_running_")) continue;
+    const id = type.slice("task_running_".length);
+    if (!runningTaskIds.has(id)) {
+      layoutStore.dismissNotice(n.id);
+    }
+  }
+}
+
+async function pollTaskNotices() {
+  try {
+    const data = await getTasks();
+    const all = Array.isArray(data?.tasks) ? data.tasks : [];
+    const running = all.filter((x) => ["running", "stopping"].includes(String(x?.status || "")));
+    const runningIds = new Set(running.map((x) => String(x?.task_id || "")).filter(Boolean));
+    clearStaleTaskNotices(runningIds);
+    for (const task of running) {
+      const tid = String(task?.task_id || "").trim();
+      if (!tid) continue;
+      const stopping = String(task?.status || "") === "stopping";
+      layoutStore.pushNotice(`task_running_${tid}`, taskNoticeTitle(task?.task), taskNoticeText(task), {
+        actionLabel: stopping ? "" : t("notice.task.stop_action"),
+        onAction: stopping
+          ? null
+          : async () => {
+              try {
+                await stopTask(tid);
+                notify(t("notice.task.stop_toast"), "warning");
+              } catch (e) {
+                notify(String(e?.response?.data?.detail || e), "warning");
+              }
+            },
+      });
+    }
+  } catch {
+    // ignore task polling errors
+  }
+}
+
+function startTaskNoticeMonitor() {
+  stopTaskNoticeMonitor();
+  pollTaskNotices().catch(() => null);
+  taskNoticeTimer = setInterval(() => {
+    pollTaskNotices().catch(() => null);
+  }, 2500);
+}
+
+async function pollVisualTaskStatus() {
+  try {
+    const res = await getVisualTaskStatus();
+    const status = res?.status || {};
+    const errSeq = Number(status?.last_error_seq || 0);
+    if (Number.isFinite(errSeq) && errSeq > lastVisualErrorSeq) {
+      lastVisualErrorSeq = errSeq;
+      const reason = String(status?.last_error_message || "unknown").trim();
+      const table = String(status?.last_error_table || "").trim();
+      const item = String(status?.last_error_item || "").trim();
+      const tb = String(status?.last_error_traceback || "").trim();
+      const lines = [
+        table ? `table: ${table}` : "",
+        item ? `item: ${item}` : "",
+        reason ? `reason: ${reason}` : "",
+        tb ? `traceback:\n${tb}` : "",
+      ].filter(Boolean);
+      const text = lines.join("\n\n").slice(0, 6000);
+      layoutStore.pushNotice("visual_task_error", t("notice.visual_task.fail_title"), text);
+      notify(t("notice.visual_task.fail_toast", { reason: reason || "unknown" }), "warning");
+    }
+
+    if (status?.stopped_by_user) {
+      layoutStore.dismissNoticeType("visual_task");
+      const hasStoppedNotice = (layoutStore.notices || []).some((x) => x.type === "visual_task_stopped");
+      if (!hasStoppedNotice) {
+        layoutStore.pushNotice("visual_task_stopped", t("notice.visual_task.title"), t("notice.visual_task.stopped"));
+      }
+      return;
+    }
+    if (status?.running && status?.phase === "processing") {
+      layoutStore.dismissNoticeType("visual_task_stopped");
+      layoutStore.pushNotice("visual_task", t("notice.visual_task.title"), visualTaskText(status), {
+        actionLabel: t("notice.visual_task.stop_action"),
+        onAction: async () => {
+          try {
+            await stopVisualTask();
+            notify(t("notice.visual_task.stop_toast"), "warning");
+            layoutStore.dismissNoticeType("visual_task");
+            layoutStore.pushNotice("visual_task_stopped", t("notice.visual_task.title"), t("notice.visual_task.stopped"));
+          } catch (e) {
+            notify(String(e?.response?.data?.detail || e), "warning");
+          }
+        },
+      });
+      return;
+    }
+    layoutStore.dismissNoticeType("visual_task");
+    if (status?.running && status?.phase === "idle") {
+      layoutStore.dismissNoticeType("visual_task_stopped");
+    }
+  } catch {
+    // ignore status polling errors
+  }
+}
+
+function startVisualTaskMonitor() {
+  stopVisualTaskMonitor();
+  pollVisualTaskStatus().catch(() => null);
+  visualTaskTimer = setInterval(() => {
+    pollVisualTaskStatus().catch(() => null);
+  }, 2500);
 }
 
 function formatDateTimeByUi(value) {
@@ -190,6 +340,8 @@ appStore.init({
   afterLogout: () => {
     appInitialized = false;
     controlStore.stopControlPolling();
+    stopVisualTaskMonitor();
+    stopTaskNoticeMonitor();
   },
 });
 
@@ -208,6 +360,8 @@ async function initializeAppData() {
     settingsStore.loadModelStatus(),
     loadChatHistory(),
   ]);
+  startVisualTaskMonitor();
+  startTaskNoticeMonitor();
   await nextTick();
   bindHomeInfiniteScroll();
 }
@@ -307,6 +461,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopTheme();
   controlStore.stopControlPolling();
+  stopVisualTaskMonitor();
+  stopTaskNoticeMonitor();
   auditStore.stopLogTailPolling();
   xpStore.clearXpTimer();
   clearTouchPreviewTimer();

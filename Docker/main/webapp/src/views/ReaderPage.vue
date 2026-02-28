@@ -117,7 +117,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getReaderManifest } from "../api";
+import { getReaderManifest, postReaderReadEvent } from "../api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useViewportFit } from "../composables/useViewportFit";
 import { useContinuousScroll } from "../composables/useContinuousScroll";
@@ -142,6 +142,7 @@ const continuousRoot = ref(null);
 const longPressSearchOpen = ref(false);
 const longPressTriggered = ref(false);
 let longPressTimer = 0;
+let lastReadEventAt = 0;
 
 const tapToTurn = computed(() => settingsStore.config?.READER_TAP_TO_TURN !== false);
 const swipeEnabled = computed(() => settingsStore.config?.READER_SWIPE_ENABLED !== false);
@@ -236,7 +237,7 @@ function pageFromRoute() {
 
 function closeReader() {
   if (typeof window !== "undefined" && window.history.length <= 1) {
-    router.replace({ name: "dashboard" }).catch(() => null);
+    goHome();
     return;
   }
   router.back();
@@ -298,6 +299,7 @@ function jumpToPage(page) {
 }
 
 function toggleUi() {
+  recordReadEvent("reader-click");
   if (longPressTriggered.value) {
     longPressTriggered.value = false;
     return;
@@ -334,6 +336,7 @@ function onPointerMove(event) {
 function onPointerUp(event) {
   clearLongPressTimer();
   if (longPressTriggered.value) return;
+  recordReadEvent("reader-pointer-up");
   if (!swipeEnabled.value || readerMode.value !== "paged") return;
   if (event?.pointerType !== "touch" && event?.pointerType !== "pen") return;
   const dx = Number(event?.clientX || 0) - touchStart.value.x;
@@ -346,6 +349,28 @@ function onPointerUp(event) {
     nextPage();
   } else {
     prevPage();
+  }
+}
+
+async function recordReadEvent(source = "reader-ui") {
+  const nowMs = Date.now();
+  if (!arcid.value) return;
+  if (nowMs - lastReadEventAt < 15000) return;
+  lastReadEventAt = nowMs;
+  try {
+    await postReaderReadEvent({
+      arcid: arcid.value,
+      read_time: Math.floor(nowMs / 1000),
+      source_file: String(source || "reader-ui"),
+      ingested_at: new Date(nowMs).toISOString(),
+      raw: {
+        arcid: arcid.value,
+        page: Number(currentPage.value || 1),
+        mode: String(readerMode.value || "paged"),
+      },
+    });
+  } catch {
+    // ignore read event failures in reader flow
   }
 }
 
