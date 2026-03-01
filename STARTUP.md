@@ -95,4 +95,4 @@
 
 ## 8. 故障排查
 
-* 如果在下载SigLIP模型或者环境依赖时遇到问题（如网络环境），可以使用此处提供的[runtime懒人包](https://drive.google.com/drive/folders/1_xcQ3P2rFd8wqk_znCGlTHmVfyo9O5ma?usp=sharing)。解压到宿主机后将容器的runtime目录指向该文件夹即可。
+* 如果在下载SigLIP模型或者环境依赖时遇到问题（如网络环境），可以使用此处提供的[runtime懒人包](https://pan.quark.cn/s/9b57e63be3d7?pwd=tMen)。解压到宿主机后将容器的runtime目录指向该文件夹即可。
