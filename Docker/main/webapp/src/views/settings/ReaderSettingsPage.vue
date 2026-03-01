@@ -47,7 +47,7 @@
           :max="100"
           :step="1"
           :label="t('settings.reader.wheel_curve')"
-          color="deep-orange"
+          color="primary"
           density="compact"
           hide-details
         />

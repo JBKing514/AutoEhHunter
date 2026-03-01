@@ -953,8 +953,6 @@ def main(argv: list[str]) -> int:
                 dt = time.time() - t0
                 print(f"[{i}/{len(arcids)}] ERROR {arcid} ({dt:.2f}s): {e}", file=sys.stderr)
                 print(traceback.format_exc(), file=sys.stderr)
-                # keep current cover_embedding_status untouched;
-                # SigLIP visual补全由 webapi worker 单独处理。
 
             if args.sleep > 0:
                 time.sleep(args.sleep)

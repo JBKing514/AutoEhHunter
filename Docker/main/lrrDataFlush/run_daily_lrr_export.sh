@@ -94,7 +94,6 @@ LRR_READS_SLEEP=${LRR_READS_SLEEP:-${LRR_EXPORT_SLEEP:-0}}
 LRR_READS_INCLUDE_RAW_TAGS=${LRR_READS_INCLUDE_RAW_TAGS:-${LRR_EXPORT_INCLUDE_RAW_TAGS:-0}}
 LRR_READS_INCLUDE_TANKS=${LRR_READS_INCLUDE_TANKS:-1}
 
-# Ensure output parent directories exist before Python scripts write temp files.
 mkdir -p "$(dirname "$LRR_METADATA_OUT")"
 mkdir -p "$(dirname "$LRR_READS_OUT")"
 

@@ -118,14 +118,9 @@ def export_recent_reads(
     skipped_tanks = 0
     scanned = 0
 
-    # Resolve output path. Replace a literal token only.
-    #
-    # Do not use str.format here because user-provided paths may contain
-    # unmatched braces and trigger: "Single '}' encountered in format string".
     ts = _dt.datetime.now(tz=_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     resolved_out = out_path.replace("{timestamp}", ts)
-    # Be defensive against malformed env values such as trailing braces
-    # or accidental double suffixes.
+
     resolved_out = resolved_out.replace("{", "").replace("}", "")
     if resolved_out.endswith(".jsonl.jsonl"):
         resolved_out = resolved_out[: -len(".jsonl")]  # keep one .jsonl

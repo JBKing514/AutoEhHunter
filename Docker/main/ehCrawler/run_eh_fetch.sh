@@ -4,7 +4,7 @@ set -euo pipefail
 # Incremental EH URL fetch runner (queue-only).
 #
 # This script is intended to run frequently (e.g. every 10-30 minutes)
-# and append newly discovered gallery URLs into EH_QUEUE_FILE.
+# and append newly discovered gallery URLs into PostgreSQL table `eh_queue`.
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 

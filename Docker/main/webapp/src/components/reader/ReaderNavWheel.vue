@@ -137,7 +137,7 @@ function onWheelTouchMove(event) {
   if (!t) return;
   const dx = Number(t.clientX || 0) - touchAnchor.value.x;
   const dy = Number(t.clientY || 0) - touchAnchor.value.y;
-  let raw = props.wheelPosition === "bottom" ? dx : dy;
+  let raw = props.wheelPosition === "bottom" ? -dx : -dy;
   if (props.rtl && props.wheelPosition === "bottom") raw = -raw;
   const total = touchAnchor.value.accum + raw;
   const stepPx = props.wheelPosition === "bottom" ? 18 : 16;

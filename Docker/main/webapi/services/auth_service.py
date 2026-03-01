@@ -346,7 +346,6 @@ def _recovery_signing_key(pepper: str = "") -> bytes | None:
 
 
 def _generate_recovery_token(pepper: str = "", expires_in_seconds: int = 900) -> str:
-    """生成一个有效期只有 15 分钟的无状态签名 Token"""
     key = _recovery_signing_key(pepper)
     if key is None:
         raise ValueError("DATA_UI_AUTH_PEPPER is required for recovery token")
@@ -357,7 +356,6 @@ def _generate_recovery_token(pepper: str = "", expires_in_seconds: int = 900) ->
 
 
 def _verify_recovery_token(token: str, pepper: str = "") -> bool:
-    """验证应急 Token"""
     try:
         key = _recovery_signing_key(pepper)
         if key is None:
@@ -392,7 +390,6 @@ def verify_recovery_csrf(token: str, csrf_token: str, pepper: str = "") -> bool:
 
 
 def get_session_user(dsn: str, token: str) -> dict[str, Any] | None:
-    # 1. 拦截并验证应急 Token
     if token.startswith("RECV::"):
         if _verify_recovery_token(token, auth_pepper()):
             return {
@@ -403,7 +400,6 @@ def get_session_user(dsn: str, token: str) -> dict[str, Any] | None:
                 "expires_at": "",
             }
         return None
-    # 2. 正常的数据库验证逻辑
     h = _token_hash(token)
     now = _utcnow()
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
@@ -434,7 +430,6 @@ def get_session_user(dsn: str, token: str) -> dict[str, Any] | None:
 
 
 def generate_recovery_codes(count: int = 10) -> list[str]:
-    """生成指定数量的随机恢复码"""
     codes = []
     for _ in range(count):
         raw = secrets.token_hex(16)
@@ -443,12 +438,10 @@ def generate_recovery_codes(count: int = 10) -> list[str]:
 
 
 def hash_recovery_codes(codes: list[str]) -> list[str]:
-    """将恢复码列表转换为 SHA256 哈希列表"""
     return [hashlib.sha256(c.encode("utf-8")).hexdigest() for c in codes]
 
 
 def check_recovery_login(password_input: str) -> bool:
-    """验证恢复码（烧毁式使用）"""
     from .config_service import _load_json_config, _save_json_config
     with _RECOVERY_LOCK:
         json_vals = _load_json_config()

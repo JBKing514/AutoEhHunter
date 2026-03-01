@@ -9,12 +9,6 @@ from psycopg_pool import ConnectionPool
 
 from ..core.config_values import normalize_value as _normalize_value
 
-# ---------------------------------------------------------------------------
-# resolve_config() TTL cache — avoids a DB round-trip on every query_rows()
-# call.  TTL is intentionally short (5 s) so config changes propagate quickly
-# while eliminating the "5-15 independent DB connections per API request"
-# problem described in the architecture review.
-# ---------------------------------------------------------------------------
 _cfg_lock = threading.Lock()
 _cfg_cache: dict[str, Any] = {"ts": 0.0, "dsn": ""}
 _CFG_TTL_S: float = 5.0
@@ -25,7 +19,6 @@ def _cached_dsn() -> str:
     with _cfg_lock:
         if now - _cfg_cache["ts"] < _CFG_TTL_S and _cfg_cache["dsn"]:
             return str(_cfg_cache["dsn"])
-    # Import here to avoid circular imports at module load time.
     from .config_service import resolve_config
 
     cfg, _ = resolve_config()
@@ -35,12 +28,6 @@ def _cached_dsn() -> str:
         _cfg_cache["dsn"] = dsn
     return dsn
 
-
-# ---------------------------------------------------------------------------
-# Module-level connection pool — shared across all webapi request handlers.
-# Lazy-initialised on first use so the webapi starts even when Postgres is
-# temporarily unavailable.
-# ---------------------------------------------------------------------------
 _pool_lock = threading.Lock()
 _pool: ConnectionPool | None = None
 
@@ -51,16 +38,13 @@ def _get_pool() -> ConnectionPool | None:
     if not dsn:
         return None
     with _pool_lock:
-        # Re-check under lock; another thread may have initialised it.
         if _pool is not None:
-            # If the DSN changed (e.g. config was updated) recreate the pool.
             try:
                 existing_dsn = _pool.conninfo
             except Exception:
                 existing_dsn = ""
             if existing_dsn == dsn:
                 return _pool
-            # DSN changed — close old pool gracefully, replace it.
             try:
                 _pool.close()
             except Exception:
@@ -77,11 +61,6 @@ def _get_pool() -> ConnectionPool | None:
         except Exception:
             _pool = None
     return _pool
-
-
-# ---------------------------------------------------------------------------
-# DSN / connection string helpers (unchanged from original)
-# ---------------------------------------------------------------------------
 
 
 def _parse_dsn_components(dsn: str) -> dict[str, str]:
@@ -138,7 +117,6 @@ def query_rows(sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
                     return [dict(r) for r in (cur.fetchall() or [])]
         except Exception:
             pass
-    # Fallback: direct connection (e.g. pool unavailable during startup).
     dsn = _cached_dsn()
     if not dsn:
         return []
