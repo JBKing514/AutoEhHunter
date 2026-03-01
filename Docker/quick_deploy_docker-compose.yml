@@ -32,10 +32,24 @@ services:
     image: jbking114514/autoehhunter:latest
     container_name: autoehhunter
     command: ["data-ui"]
+    
+    # =========================================================================
+    # [Advanced Network Routing (e.g., Gluetun VPN)]
+    # 如果你想让本容器的所有流量通过 Gluetun 等 VPN 容器代理，请按照以下 3 步操作：
+    # If you want all traffic from this container to be proxied through a VPN container proxy such as Gluetun, please follow these 3 steps:
+    # 1. 取消下方 network_mode 的注释，并确保名称与你的 VPN 服务名一致。
+    # 1. Uncomment the network_mode below and ensure that the name matches your VPN service name.
+    # 2. 必须删除或注释掉下方的 ports 映射区块！(网络合并后自身无法映射端口)
+    # 2. The ports mapping block below must be deleted or commented out! (After network merging, ports cannot be mapped by themselves)
+    # 3. 去你的 gluetun 容器配置中，加上 - "8501:8501" 的端口映射。
+    # 3. In your gluetun container configuration, add the port mapping "8501:8501".
+    # =========================================================================
+    # network_mode: "service:gluetun" # 或使用 "container:gluetun"
+    
     ports:
       - "8501:8501"
     volumes:
-      - ./runtime:/app/runtime
+      - ${YOUR_LOCAL_PATH}:/app/runtime
     restart: unless-stopped
     depends_on:
       pg17:
