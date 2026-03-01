@@ -92,3 +92,7 @@
 ## 7. 网络配置建议
 
 容器支持配置简单的 HTTP/HTTPS 代理，但由于网络环境的复杂性，仍强烈建议使用 VPN 容器（如 Gluetun 等），通过将容器网络连接到 VPN 容器（例如在 `docker-compose.yml` 中使用 `network_mode: "container:<gluetun_container_name>"`，并开启 Gluetun 容器的端口转发），或使用独立的 `macvlan` / `ipvlan` 网络方式运行，以保证系统爬虫与图库通讯的稳定性。
+
+## 8. 故障排查
+
+* 如果在下载SigLIP模型或者环境依赖时遇到问题（如网络环境），可以使用此处提供的[runtime懒人包](https://drive.google.com/drive/folders/1_xcQ3P2rFd8wqk_znCGlTHmVfyo9O5ma?usp=sharing)。解压到宿主机后将容器的runtime目录指向该文件夹即可。

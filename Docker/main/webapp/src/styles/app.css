@@ -138,6 +138,12 @@ canvas {
   height: 220px;
 }
 
+.home-card.compact .cat-badge {
+  top: 8px;
+  bottom: auto;
+  z-index: 4;
+}
+
 .cat-badge {
   position: absolute;
   right: 6px;

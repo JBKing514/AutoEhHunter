@@ -157,9 +157,9 @@
           </v-card>
 
           <v-list v-if="homeViewMode === 'list'" class="mb-2" lines="two">
-            <v-list-item v-for="item in filteredHomeItems" :key="item.id" :subtitle="itemSubtitle(item)">
+            <v-list-item v-for="item in filteredHomeItems" :key="item.id" :subtitle="itemSubtitle(item)" @click="openDetailCard(item)">
               <template #title>
-                <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="cover-link-title" @mousedown="onRecommendItemOpen(item)" @click="onRecommendItemOpen(item)">{{ getGalleryTitle(item) }}</a>
+                <a :href="itemPrimaryLink(item)" :ref="(el) => setRecommendExposureRef(el, item)" target="_blank" rel="noopener noreferrer" class="cover-link-title" @mousedown.stop="onRecommendItemOpen(item)" @click.stop="onRecommendItemOpen(item)">{{ getGalleryTitle(item) }}</a>
               </template>
               <template #prepend>
                 <div class="list-cover" @contextmenu.prevent>
@@ -167,6 +167,15 @@
                   <img v-if="item.thumb_url" :src="item.thumb_url" alt="cover" class="cover-img list-cover-img" loading="lazy" draggable="false" @dragstart.prevent @error="onImageError(item)" />
                   <v-icon v-else size="18">mdi-image-outline</v-icon>
                 </div>
+              </template>
+              <template #append>
+                <v-btn
+                  v-if="item.source === 'works' && item.arcid && !config.READER_HIDE_START_BUTTON"
+                  icon="mdi-play"
+                  size="small"
+                  variant="tonal"
+                  @click.stop="startReader(item)"
+                />
               </template>
             </v-list-item>
           </v-list>
@@ -423,6 +432,7 @@
 import { useDashboardStore } from "../stores/dashboardStore";
 
 export default {
+  name: "DashboardPage",
   setup() {
     return useDashboardStore();
   },
@@ -545,6 +555,9 @@ export default {
         };
         ghostImg.src = testUrl;
       }, retryDelayMs);
+    },
+    openDetailCard(item) {
+      this.mobilePreviewItem = item || null;
     },
   },
 };

@@ -38,7 +38,11 @@
 
     <v-main>
       <v-container fluid :class="[hideReaderChrome ? 'pa-0' : 'pa-6', ui.tab === 'chat' ? 'chat-page-container' : '']">
-        <RouterView />
+        <RouterView v-slot="{ Component }">
+          <KeepAlive include="DashboardPage">
+            <component :is="Component" />
+          </KeepAlive>
+        </RouterView>
       </v-container>
     </v-main>
 

@@ -23,6 +23,36 @@ from ..services.vision_service import warmup_siglip_model, _embed_image_siglip, 
 
 router = APIRouter(tags=["system"])
 
+
+def _parse_csv_param(raw: str) -> list[str]:
+    return [str(x).strip().lower() for x in str(raw or "").split(",") if str(x).strip()]
+
+
+def _apply_item_filters(items: list[dict[str, Any]], cats: list[str], tags: list[str]) -> list[dict[str, Any]]:
+    if not cats and not tags:
+        return items
+    out: list[dict[str, Any]] = []
+    for it in items or []:
+        if cats:
+            c = str(it.get("category") or "").strip().lower()
+            if c not in cats:
+                continue
+        if tags:
+            bag = [
+                *(str(x).strip().lower() for x in (it.get("tags") or [])),
+                *(str(x).strip().lower() for x in (it.get("tags_translated") or [])),
+            ]
+            joined = " ".join([x for x in bag if x])
+            ok = True
+            for t in tags:
+                if t not in joined:
+                    ok = False
+                    break
+            if not ok:
+                continue
+        out.append(it)
+    return out
+
 class ImageEmbedPayload(BaseModel):
     image: str
 
@@ -115,6 +145,8 @@ def disable_visual_task() -> dict[str, Any]:
 def home_history(
     cursor: str = Query(default=""),
     limit: int = Query(default=24, ge=1, le=80),
+    include_categories: str = Query(default=""),
+    include_tags: str = Query(default=""),
 ) -> dict[str, Any]:
     cursor_ep = None
     cursor_arcid = ""
@@ -128,11 +160,25 @@ def home_history(
                 cursor_ep = None
                 cursor_arcid = ""
 
-    where = ""
+    cats = _parse_csv_param(include_categories)
+    tags = _parse_csv_param(include_tags)
+    if "__none__" in cats:
+        return {"items": [], "next_cursor": "", "has_more": False, "meta": {"mode": "history"}}
+    cat_tag_vals = [f"category:{c}" for c in cats if c and c != "__none__"]
+
+    conds: list[str] = []
     params: list[Any] = []
     if cursor_ep is not None:
-        where = "WHERE (l.read_time < %s OR (l.read_time = %s AND l.arcid < %s))"
+        conds.append("(l.read_time < %s OR (l.read_time = %s AND l.arcid < %s))")
         params.extend([int(cursor_ep), int(cursor_ep), cursor_arcid])
+    if cat_tag_vals:
+        conds.append("EXISTS (SELECT 1 FROM unnest(w.tags) t(tag) WHERE lower(t.tag) = ANY(%s))")
+        params.append(cat_tag_vals)
+    for t in tags:
+        conds.append("EXISTS (SELECT 1 FROM unnest(w.tags) tt(tag) WHERE lower(tt.tag) LIKE %s)")
+        params.append(f"%{t}%")
+
+    where = f"WHERE {' AND '.join(conds)}" if conds else ""
     sql = (
         "WITH latest AS ("
         "SELECT arcid, max(read_time) AS read_time FROM read_events GROUP BY arcid"
@@ -165,6 +211,8 @@ def home_local(
     limit: int = Query(default=24, ge=1, le=80),
     sort_by: str = Query(default="xp"),
     sort_order: str = Query(default="desc"),
+    include_categories: str = Query(default=""),
+    include_tags: str = Query(default=""),
 ) -> dict[str, Any]:
     safe_sort_by = str(sort_by or "xp").strip().lower()
     if safe_sort_by not in {"xp", "date_added", "eh_posted"}:
@@ -180,12 +228,17 @@ def home_local(
             offset = 0
 
     cfg, _ = resolve_config()
+    cats = _parse_csv_param(include_categories)
+    tags = _parse_csv_param(include_tags)
+    if "__none__" in cats:
+        return {"items": [], "next_cursor": "", "has_more": False, "meta": {"mode": "local", "sort_by": safe_sort_by, "sort_order": safe_sort_order}}
+
     rows: list[dict[str, Any]] = []
     if safe_sort_by == "xp":
         auth_user = getattr(request.state, "auth_user", {}) or {}
         user_id = str(auth_user.get("uid") or "default_user")
         ranked = get_local_recommendation_items_cached(cfg, user_id=user_id, sort_order=safe_sort_order)
-        all_items = list(ranked.get("items") or [])
+        all_items = _apply_item_filters(list(ranked.get("items") or []), cats, tags)
         end = offset + int(limit)
         items = all_items[offset:end]
         next_cursor = str(end) if end < len(all_items) else ""
@@ -202,13 +255,25 @@ def home_local(
         }
 
     safe_col = "date_added" if safe_sort_by == "date_added" else "eh_posted"
+    conds: list[str] = []
+    params: list[Any] = []
+    cat_tag_vals = [f"category:{c}" for c in cats if c and c != "__none__"]
+    if cat_tag_vals:
+        conds.append("EXISTS (SELECT 1 FROM unnest(w.tags) t(tag) WHERE lower(t.tag) = ANY(%s))")
+        params.append(cat_tag_vals)
+    for t in tags:
+        conds.append("EXISTS (SELECT 1 FROM unnest(w.tags) tt(tag) WHERE lower(tt.tag) LIKE %s)")
+        params.append(f"%{t}%")
+    where = f"WHERE {' AND '.join(conds)}" if conds else ""
     sql = (
         "SELECT w.arcid, w.title, w.tags, w.eh_posted, w.date_added, w.lastreadtime "
         "FROM works w "
+        f"{where} "
         f"ORDER BY COALESCE(w.{safe_col}, 0) {'ASC' if safe_sort_order == 'asc' else 'DESC'}, w.arcid {'ASC' if safe_sort_order == 'asc' else 'DESC'} "
         "OFFSET %s LIMIT %s"
     )
-    rows = query_rows(sql, (int(offset), int(limit)))
+    params.extend([int(offset), int(limit)])
+    rows = query_rows(sql, tuple(params))
     items = [_item_from_work(r, cfg) for r in rows]
     next_cursor = str(offset + int(limit)) if len(rows) >= int(limit) else ""
     return {

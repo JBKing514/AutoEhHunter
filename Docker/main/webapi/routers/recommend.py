@@ -16,6 +16,36 @@ from ..services.rec_service import _compute_xp_map, _get_recommendation_items_ca
 router = APIRouter(tags=["recommend"])
 
 
+def _parse_csv_param(raw: str) -> list[str]:
+    return [str(x).strip().lower() for x in str(raw or "").split(",") if str(x).strip()]
+
+
+def _filter_recommend_items(items: list[dict[str, Any]], cats: list[str], tags: list[str]) -> list[dict[str, Any]]:
+    if not cats and not tags:
+        return items
+    out: list[dict[str, Any]] = []
+    for it in items or []:
+        if cats:
+            c = str(it.get("category") or "").strip().lower()
+            if c not in cats:
+                continue
+        if tags:
+            bag = [
+                *(str(x).strip().lower() for x in (it.get("tags") or [])),
+                *(str(x).strip().lower() for x in (it.get("tags_translated") or [])),
+            ]
+            joined = " ".join([x for x in bag if x])
+            ok = True
+            for t in tags:
+                if t not in joined:
+                    ok = False
+                    break
+            if not ok:
+                continue
+        out.append(it)
+    return out
+
+
 @router.get("/api/home/recommend")
 def home_recommend(
     request: Request,
@@ -26,6 +56,8 @@ def home_recommend(
     jitter: bool = Query(default=False),
     jitter_nonce: str = Query(default=""),
     visual_scope: str = Query(default="external"),
+    include_categories: str = Query(default=""),
+    include_tags: str = Query(default=""),
 ) -> dict[str, Any]:
     auth_user = getattr(request.state, "auth_user", {}) or {}
     user_id = str(auth_user.get("uid") or "default_user")
@@ -40,6 +72,14 @@ def home_recommend(
         visual_scope=str(visual_scope or "external"),
     )
     all_items = list(data.get("items") or [])
+    cats = _parse_csv_param(include_categories)
+    tags = _parse_csv_param(include_tags)
+    if "__none__" in cats:
+        all_items = []
+        cats = []
+        tags = []
+    if cats or tags:
+        all_items = _filter_recommend_items(all_items, cats, tags)
     start = 0
     if cursor:
         try:
@@ -71,6 +111,8 @@ def recommend_items(
     jitter: bool = Query(default=False),
     jitter_nonce: str = Query(default=""),
     visual_scope: str = Query(default="external"),
+    include_categories: str = Query(default=""),
+    include_tags: str = Query(default=""),
 ) -> dict[str, Any]:
     return home_recommend(
         request=request,
@@ -81,6 +123,8 @@ def recommend_items(
         jitter=jitter,
         jitter_nonce=jitter_nonce,
         visual_scope=visual_scope,
+        include_categories=include_categories,
+        include_tags=include_tags,
     )
 
 

@@ -95,3 +95,7 @@ Considering that configuration is uniformly managed by the database, this system
 ## 7. Network Configuration Advice
 
 The container supports configuring simple HTTP/HTTPS proxies, but due to the complexity of network environments, it is still highly recommended to use a VPN container (such as Gluetun). You can connect the container's network to the VPN container (e.g., using `network_mode: "container:<gluetun_container_name>"` in `docker-compose.yml` and enabling port forwarding on the Gluetun container), or use an independent `macvlan` / `ipvlan` network setup to ensure the stability of the system's crawler and library communications.
+
+## 8. Troube-Shoot
+
+* If you encounter problems downloading the SigLIP model or with environment dependencies (such as network issues), you can use the runtime pre-packaged [here](https://drive.google.com/drive/folders/1_xcQ3P2rFd8wqk_znCGlTHmVfyo9O5ma?usp=sharing). After extracting it to your host machine, simply point the container's runtime directory to this folder.

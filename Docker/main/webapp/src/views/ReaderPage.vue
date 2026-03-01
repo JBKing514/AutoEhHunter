@@ -238,11 +238,20 @@ function pageFromRoute() {
 function toggleFullscreen() {
   if (typeof document === "undefined") return;
   if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch((err) => {
-      console.warn("全屏请求被拒绝:", err);
-    });
+    const el = document.documentElement;
+    if (!el || typeof el.requestFullscreen !== "function") return;
+    const p = el.requestFullscreen();
+    if (p && typeof p.catch === "function") {
+      p.catch((err) => {
+        console.warn("全屏请求被拒绝:", err);
+      });
+    }
   } else {
-    document.exitFullscreen().catch(() => null);
+    if (typeof document.exitFullscreen !== "function") return;
+    const p = document.exitFullscreen();
+    if (p && typeof p.catch === "function") {
+      p.catch(() => null);
+    }
   }
 }
 

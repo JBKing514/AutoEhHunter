@@ -90,26 +90,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
   });
 
   const filteredHomeItems = computed(() => {
-    const src = activeHomeState.value?.items || [];
-    const cats = (effectiveFilterCategories() || []).map((x) => String(x).toLowerCase());
-    const tags = (homeFilters.value.tags || []).map((x) => String(x).toLowerCase()).filter(Boolean);
-    if (!cats.length && !tags.length) return src;
-    return src.filter((it) => {
-      if (cats.length) {
-        const c = String(it?.category || "").toLowerCase();
-        if (!cats.includes(c)) return false;
-      }
-      if (tags.length) {
-        const all = [
-          ...((it?.tags || []).map((x) => String(x).toLowerCase())),
-          ...((it?.tags_translated || []).map((x) => String(x).toLowerCase())),
-        ].join(" ");
-        for (const t of tags) {
-          if (!all.includes(t)) return false;
-        }
-      }
-      return true;
-    });
+    return activeHomeState.value?.items || [];
   });
 
   function init(deps = {}) {
@@ -597,6 +578,10 @@ export const useDashboardStore = defineStore("dashboard", () => {
     homeFiltersOpen.value = false;
     if (homeTab.value === "search") {
       await rerunSearchWithFilters();
+      return;
+    }
+    if (homeTab.value === "history" || homeTab.value === "local" || homeTab.value === "recommend") {
+      await resetHomeFeed();
     }
   }
 
@@ -615,6 +600,10 @@ export const useDashboardStore = defineStore("dashboard", () => {
     try {
       const params = { limit: 24 };
       if (!reset && state.cursor) params.cursor = state.cursor;
+      const cats = effectiveFilterCategories();
+      const tags = (homeFilters.value.tags || []).map((x) => String(x || "").trim()).filter(Boolean);
+      if (cats.length) params.include_categories = cats.join(",");
+      if (tags.length) params.include_tags = tags.join(",");
       if (homeTab.value === "recommend") {
         params.depth = Number(homeRecommendDepth.value || 1);
         params.jitter = Number(homeRecommendJitterNonce.value || 0) > 0;
