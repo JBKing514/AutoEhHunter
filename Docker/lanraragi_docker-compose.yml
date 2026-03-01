@@ -5,7 +5,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ${LRR_CONTENT_DIR}:/home/koyomi/lanraragi/content
-      - ${LRR_THUMB_DIR}:/home/koyomi/lanraragi/thumb
-      - ${LRR_DATABASE_DIR}:/home/koyomi/lanraragi/database
+      - ${LRR_CONTENT_DIR:-./autoehhunter/lanraragi/content}:/home/koyomi/lanraragi/content
+      - ${LRR_THUMB_DIR:-./autoehhunter/lanraragi/thumb}:/home/koyomi/lanraragi/thumb
+      - ${LRR_DATABASE_DIR:-./autoehhunter/lanraragi/database}:/home/koyomi/lanraragi/database
     restart: unless-stopped

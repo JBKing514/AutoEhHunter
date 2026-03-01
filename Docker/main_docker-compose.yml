@@ -20,5 +20,5 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ${YOUR_LOCAL_PATH}:/app/runtime
+      - ${YOUR_LOCAL_PATH:-./autoehhunter/runtime}:/app/runtime
     restart: unless-stopped
